@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Theo Dõi Đèn Giao Thông</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+  --red:#f85149;--amber:#f0883e;--green:#3fb950;--blue:#58a6ff;
+  --yellow:#f5c518;--text:#e6edf3;--muted:#8b949e;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+/* HEADER */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:9px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.header-icon{font-size:20px}
+.header-title{font-size:14px;font-weight:700}
+.header-sub{font-size:10px;color:var(--muted)}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.drive-btn{padding:6px 12px;border-radius:20px;border:none;background:var(--green);color:#000;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s}
+.drive-btn.active{background:var(--red);color:#fff;animation:pulse-btn 1.5s infinite}
+@keyframes pulse-btn{0%,100%{opacity:1}50%{opacity:.7}}
+
+/* TABS */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{flex:1;padding:9px 2px;text-align:center;font-size:11px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;font-weight:600}
+.tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+
+.panel{display:none;flex-direction:column;flex:1;overflow:hidden}
+.panel.active{display:flex}
+
+/* ═══════════════════════════════════
+   HUD PANEL
+═══════════════════════════════════ */
+#panel-hud{background:#000;position:relative}
+
+.hud-speed-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.hud-speed{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--text);line-height:1}
+.hud-speed-unit{font-size:11px;color:var(--muted);margin-top:2px}
+.hud-gps-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.hud-gps-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+
+/* NEAREST LIGHT DISPLAY */
+.hud-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px;overflow-y:auto}
+
+.hud-no-light{text-align:center;color:var(--muted)}
+.hud-no-light .nl-icon{font-size:48px;margin-bottom:8px}
+.hud-no-light .nl-text{font-size:14px}
+
+.hud-light-card{width:100%;max-width:360px;background:var(--surface);border-radius:16px;border:1px solid var(--border);padding:16px;position:relative;overflow:hidden}
+.hud-light-card.broken-card{border-color:rgba(248,81,73,.5);background:#1a1015}
+.hud-light-card.normal-card{border-color:rgba(63,185,80,.3);background:#0f1a12}
+.hlc-glow{position:absolute;inset:0;opacity:.08;pointer-events:none;border-radius:16px}
+.hlc-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.hlc-traffic-light{background:#111;border-radius:10px;padding:10px 8px;display:flex;flex-direction:column;gap:7px;border:1px solid #333;flex-shrink:0}
+.hlc-bulb{width:22px;height:22px;border-radius:50%;opacity:.15}
+.hlc-bulb.on{opacity:1;box-shadow:0 0 12px currentColor}
+.hlc-bulb.blink{animation:blink-bulb .5s infinite}
+@keyframes blink-bulb{0%,100%{opacity:1;box-shadow:0 0 12px currentColor}50%{opacity:.2;box-shadow:none}}
+.bulb-r{background:var(--red);color:var(--red)}
+.bulb-y{background:var(--yellow);color:var(--yellow)}
+.bulb-g{background:var(--green);color:var(--green)}
+.hlc-info{flex:1}
+.hlc-name{font-size:15px;font-weight:700;margin-bottom:3px}
+.hlc-addr{font-size:11px;color:var(--muted);margin-bottom:8px}
+.hlc-phase-label{font-size:13px;font-weight:700;margin-bottom:4px}
+.hlc-phase-timer{font-size:42px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+.hlc-phase-bar-wrap{height:5px;background:var(--surface2);border-radius:3px;margin-top:6px;overflow:hidden}
+.hlc-phase-bar{height:100%;border-radius:3px;transition:width .9s linear}
+
+/* BROKEN ALERT BANNER */
+.broken-alert{background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.4);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.broken-alert-icon{font-size:22px;animation:shake .5s infinite}
+@keyframes shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}}
+.broken-alert-text{flex:1}
+.broken-alert-title{font-size:13px;font-weight:700;color:var(--red)}
+.broken-alert-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ETA ROW */
+.hlc-eta{background:var(--surface2);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.hlc-eta-icon{font-size:20px}
+.hlc-eta-body{flex:1}
+.hlc-eta-dist{font-size:13px;font-weight:700}
+.hlc-eta-time{font-size:11px;color:var(--muted)}
+.hlc-eta-prediction{font-size:13px;font-weight:700;text-align:right}
+
+/* ARRIVAL WARN */
+.hlc-arrival-warn{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;text-align:center;display:none}
+.hlc-arrival-warn.show{display:block}
+
+/* BOTTOM LIST */
+.hud-others{flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px}
+.hud-others-title{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.hud-others-list{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.hud-other-chip{flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer}
+.hud-other-chip.broken-chip{border-color:rgba(248,81,73,.4)}
+.hud-other-chip.normal-chip{border-color:rgba(63,185,80,.3)}
+.hud-oc-name{font-weight:700;margin-bottom:2px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.hud-oc-dist{color:var(--muted)}
+.hud-oc-phase{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* ═══ MAP ═══ */
+#map{flex:1;width:100%}
+.map-fab{position:absolute;bottom:80px;right:14px;z-index:200;display:flex;flex-direction:column;gap:10px}
+.fab-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.5);transition:transform .15s}
+.fab-btn:active{transform:scale(.92)}
+.fab-red{background:var(--red);color:#fff}
+.fab-blue{background:var(--blue);color:#fff}
+
+/* ═══ SCROLL PANELS ═══ */
+.scroll-panel{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.section-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px}
+.tip{font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:10px}
+
+.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.form-group:last-child{margin-bottom:0}
+label{font-size:12px;color:var(--muted);font-weight:600}
+input,textarea,select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;padding:9px 12px;width:100%;outline:none;font-family:inherit}
+input:focus,textarea:focus,select:focus{border-color:var(--amber)}
+select option{background:var(--surface2)}
+textarea{resize:none;min-height:60px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* STATUS TOGGLE */
+.status-toggle{display:flex;gap:8px;margin-bottom:10px}
+.st-btn{flex:1;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;text-align:center;transition:all .2s}
+.st-btn.active-normal{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.5);color:var(--green)}
+.st-btn.active-broken{background:rgba(248,81,73,.15);border-color:rgba(248,81,73,.5);color:var(--red)}
+
+.btn{width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:0}
+.btn:active{opacity:.85}
+.btn-amber{background:var(--amber);color:#000}
+.btn-red{background:var(--red);color:#fff}
+.btn-green{background:var(--green);color:#000}
+.btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+
+/* LIST */
+.list-empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px}
+.list-empty .ei{font-size:40px;margin-bottom:10px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;gap:10px}
+.card.card-broken{border-left:3px solid var(--red)}
+.card.card-normal{border-left:3px solid var(--green)}
+.card-body{flex:1;min-width:0}
+.card-name{font-size:14px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-addr{font-size:11px;color:var(--muted);margin-bottom:5px}
+.card-meta{display:flex;gap:5px;flex-wrap:wrap}
+.badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
+.br{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.ba{background:rgba(240,136,62,.15);color:var(--amber);border:1px solid rgba(240,136,62,.3)}
+.bg{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.bm{background:rgba(139,148,158,.1);color:var(--muted);border:1px solid var(--border)}
+.bblue{background:rgba(88,166,255,.15);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.card-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0}
+.icon-btn{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ib-del{color:var(--red);border-color:rgba(248,81,73,.3)}
+.ib-nav{color:var(--blue);border-color:rgba(88,166,255,.3)}
+.ib-map{color:var(--green);border-color:rgba(63,185,80,.3)}
+.ib-cyc{color:var(--amber);border-color:rgba(240,136,62,.3)}
+
+/* card mini clock */
+.card-clock{margin-top:7px;background:var(--surface2);border-radius:8px;padding:7px 10px;display:flex;align-items:center;gap:8px}
+.mini-lights{display:flex;flex-direction:column;gap:3px}
+.mb{width:10px;height:10px;border-radius:50%;opacity:.18}
+.mb.on{opacity:1;box-shadow:0 0 5px currentColor}
+.mb-r{background:var(--red);color:var(--red)}
+.mb-y{background:var(--yellow);color:var(--yellow)}
+.mb-g{background:var(--green);color:var(--green)}
+.mini-info{flex:1;font-size:11px;color:var(--muted)}
+.mini-bar-wrap{height:3px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden}
+.mini-bar{height:100%;border-radius:2px;transition:width .9s linear}
+.mini-timer{font-size:16px;font-weight:900;font-variant-numeric:tabular-nums}
+.mini-broken-tag{font-size:10px;color:var(--red);font-weight:700;margin-top:3px}
+
+/* UPLOAD */
+.upload-zone{border:2px dashed var(--border);border-radius:10px;padding:22px;text-align:center;cursor:pointer;position:relative;transition:border-color .2s}
+.upload-zone:hover{border-color:var(--amber)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:30px;margin-bottom:7px}
+.upload-text{font-size:13px;color:var(--muted)}
+.upload-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.exif-ok{color:var(--green);font-size:12px}
+.exif-err{color:var(--red);font-size:12px}
+
+/* STATS */
+.stats-bar{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+.stat-item{flex:1;text-align:center;padding:7px 4px;border-right:1px solid var(--border)}
+.stat-item:last-child{border-right:none}
+.stat-num{font-size:15px;font-weight:700;color:var(--amber)}
+.stat-label{font-size:10px;color:var(--muted)}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;white-space:nowrap;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-end;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal{background:var(--surface);border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:480px;border-top:1px solid var(--border)}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:14px;text-align:center}
+.modal-btn{width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px}
+.mb-cancel{background:var(--surface2);color:var(--muted)}
+.mb-confirm{background:var(--red);color:#fff}
+
+/* LIST FILTER */
+.list-filter{display:flex;gap:6px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.filter-btn{flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s}
+.filter-btn.active{background:var(--amber);color:#000;border-color:var(--amber)}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-icon">🚦</div>
+  <div>
+    <div class="header-title">Theo Dõi Đèn Giao Thông</div>
+    <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
+  </div>
+  <div class="hdr-right">
+    <div class="hud-gps-dot" id="gpsDot"></div>
+    <button class="drive-btn" id="driveBtn" onclick="toggleDriveMode()">🚗 Lái xe</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs" id="mainTabs">
+  <div class="tab active" onclick="switchTab('hud')">🚗 HUD</div>
+  <div class="tab" onclick="switchTab('map')">🗺️ Bản đồ</div>
+  <div class="tab" onclick="switchTab('list')">📋 Danh sách</div>
+  <div class="tab" onclick="switchTab('add')">➕ Thêm</div>
+  <div class="tab" onclick="switchTab('cam')">📷 70mai</div>
+</div>
+
+<!-- ══════════ HUD PANEL ══════════ -->
+<div class="panel active" id="panel-hud">
+  <div class="hud-speed-bar">
+    <div>
+      <div class="hud-speed" id="hudSpeed">0</div>
+      <div class="hud-speed-unit">km/h</div>
+    </div>
+    <div style="flex:1;padding:0 12px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Hướng di chuyển</div>
+      <div style="font-size:14px;font-weight:700" id="hudHeading">--</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px;color:var(--muted)">Góc nón phát hiện</div>
+      <div style="font-size:13px;font-weight:700;color:var(--amber)">± 60°</div>
+    </div>
+  </div>
+  <div class="hud-main" id="hudMain">
+    <div class="hud-no-light">
+      <div class="nl-icon">✅</div>
+      <div class="nl-text">Không có đèn phía trước</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">App đang theo dõi trong hình nón 60° trước mặt</div>
+    </div>
+  </div>
+  <div class="hud-others" id="hudOthers" style="display:none">
+    <div class="hud-others-title">Đèn xung quanh (ngoài hướng đi)</div>
+    <div class="hud-others-list" id="hudOthersList"></div>
+  </div>
+</div>
+
+<!-- ══════════ MAP PANEL ══════════ -->
+<div class="panel" id="panel-map" style="position:relative">
+  <div id="map"></div>
+  <div class="map-fab">
+    <button class="fab-btn fab-red" onclick="quickAddGPS()">🚨</button>
+    <button class="fab-btn fab-blue" onclick="centerMe()">📍</button>
+  </div>
+</div>
+
+<!-- ══════════ LIST PANEL ══════════ -->
+<div class="panel" id="panel-list">
+  <div class="list-filter">
+    <button class="filter-btn active" id="fAll" onclick="setFilter('all')">Tất cả</button>
+    <button class="filter-btn" id="fBroken" onclick="setFilter('broken')">🔴 Hỏng</button>
+    <button class="filter-btn" id="fNormal" onclick="setFilter('normal')">🟢 Bình thường</button>
+  </div>
+  <div class="scroll-panel" id="listContainer">
+    <div class="list-empty"><div class="ei">🚦</div>Chưa có điểm nào</div>
+  </div>
+</div>
+
+<!-- ══════════ ADD PANEL ══════════ -->
+<div class="panel" id="panel-add">
+  <div class="scroll-panel">
+    <div>
+      <div class="section-title">🛰️ Thêm nhanh bằng GPS</div>
+      <div class="section-box">
+        <div class="form-group"><label>Loại đèn</label>
+          <div class="status-toggle">
+            <div class="st-btn active-normal" id="qst-normal" onclick="setQuickStatus('normal')">🟢 Đèn bình thường</div>
+            <div class="st-btn" id="qst-broken" onclick="setQuickStatus('broken')">🔴 Đèn hỏng</div>
+          </div>
+        </div>
+        <div class="form-group"><label>Tên / Ghi chú</label>
+          <input type="text" id="quickName" placeholder="VD: Ngã tư Lê Lợi">
+        </div>
+        <p class="tip">Nhập chu kỳ đèn nếu đã đếm được — app tự tính pha theo thời gian thực. Với đèn hỏng, chu kỳ này là dữ liệu <strong style="color:var(--amber)">thường ngày</strong> trước khi hỏng.</p>
+        <div class="form-group"><label>Chu kỳ đèn (giây)</label>
+          <div class="row3">
+            <div><label style="color:var(--green)">🟢 Xanh</label><input type="number" id="qG" placeholder="30" min="1"></div>
+            <div><label style="color:var(--yellow)">🟡 Vàng</label><input type="number" id="qY" placeholder="5" min="1"></div>
+            <div><label style="color:var(--red)">🔴 Đỏ</label><input type="number" id="qR" placeholder="30" min="1"></div>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="form-group"><label>Đèn đang ở pha nào?</label>
+            <select id="qP"><option value="">-- Không rõ --</option><option value="green">🟢 Đang xanh</option><option value="yellow">🟡 Đang vàng</option><option value="red">🔴 Đang đỏ</option></select>
+          </div>
+          <div class="form-group"><label>Còn lại (giây)</label><input type="number" id="qRem" placeholder="15" min="0"></div>
+        </div>
+        <button class="btn btn-green" onclick="addByGPS()">🛰️ Lấy GPS & Lưu điểm này</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">✏️ Nhập thủ công</div>
+      <div class="section-box">
+        <div class="form-group"><label>Loại đèn</label>
+          <div class="status-toggle">
+            <div class="st-btn active-normal" id="mst-normal" onclick="setManualStatus('normal')">🟢 Đèn bình thường</div>
+            <div class="st-btn" id="mst-broken" onclick="setManualStatus('broken')">🔴 Đèn hỏng</div>
+          </div>
+        </div>
+        <div class="form-group"><label>Tên địa điểm *</label><input type="text" id="mName" placeholder="VD: Ngã ba Trần Phú – Lý Tự Trọng"></div>
+        <div class="form-group"><label>Địa chỉ</label><input type="text" id="mAddr" placeholder="VD: Trước cổng chợ Bạc Liêu"></div>
+        <div class="row2">
+          <div class="form-group"><label>Vĩ độ</label><input type="number" id="mLat" placeholder="9.2845" step="0.000001"></div>
+          <div class="form-group"><label>Kinh độ</label><input type="number" id="mLng" placeholder="105.7243" step="0.000001"></div>
+        </div>
+        <div class="form-group" id="mTypeRow"><label>Loại sự cố (nếu hỏng)</label>
+          <select id="mType">
+            <option value="Đèn tối hoàn toàn">🔴 Đèn tối hoàn toàn</option>
+            <option value="Đèn nhấp nháy">🟡 Đèn nhấp nháy không rõ</option>
+            <option value="Đèn không chuyển pha">🔄 Không chuyển pha</option>
+            <option value="Đèn mờ khó nhìn">🌫️ Đèn mờ khó nhìn</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Chu kỳ đèn (giây)</label>
+          <div class="row3">
+            <div><label style="color:var(--green)">🟢 Xanh</label><input type="number" id="mG" placeholder="30" min="1"></div>
+            <div><label style="color:var(--yellow)">🟡 Vàng</label><input type="number" id="mY" placeholder="5" min="1"></div>
+            <div><label style="color:var(--red)">🔴 Đỏ</label><input type="number" id="mR" placeholder="30" min="1"></div>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="form-group"><label>Pha lúc ghi nhận</label>
+            <select id="mP"><option value="">-- Không rõ --</option><option value="green">🟢 Xanh</option><option value="yellow">🟡 Vàng</option><option value="red">🔴 Đỏ</option></select>
+          </div>
+          <div class="form-group"><label>Còn lại (giây)</label><input type="number" id="mRem" placeholder="15" min="0"></div>
+        </div>
+        <div class="form-group"><label>Ghi chú</label><textarea id="mNote" placeholder="Chi tiết thêm..."></textarea></div>
+        <button class="btn btn-amber" onclick="addManual()">💾 Lưu điểm đèn</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ CAM 70MAI ══════════ -->
+<div class="panel" id="panel-cam">
+  <div class="scroll-panel">
+    <div>
+      <div class="section-title">📷 Import ảnh từ camera 70mai</div>
+      <div class="section-box">
+        <p class="tip">Chọn ảnh JPG từ thẻ nhớ 70mai — app đọc <strong style="color:var(--amber)">GPS EXIF</strong> tự động.<br>
+        Camera 70mai phải bật GPS và lưu ảnh ra thẻ nhớ mới có tọa độ.</p>
+        <div class="upload-zone">
+          <input type="file" accept="image/*" multiple onchange="handleCamFiles(this.files)">
+          <div class="upload-icon">📂</div>
+          <div class="upload-text">Chọn ảnh JPG từ 70mai</div>
+          <div class="upload-sub">Nhiều ảnh cùng lúc · Đọc GPS EXIF tự động</div>
+        </div>
+      </div>
+    </div>
+    <div id="camResults" style="display:none">
+      <div class="section-title">📋 Kết quả đọc ảnh</div>
+      <div id="camResultList" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-bar">
+  <div class="stat-item"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Tổng điểm</div></div>
+  <div class="stat-item"><div class="stat-num" id="statBroken" style="color:var(--red)">0</div><div class="stat-label">🔴 Hỏng</div></div>
+  <div class="stat-item"><div class="stat-num" id="statNormal" style="color:var(--green)">0</div><div class="stat-label">🟢 Bình thường</div></div>
+  <div class="stat-item"><div class="stat-num" id="statNearby" style="color:var(--amber)">0</div><div class="stat-label">Phía trước</div></div>
+</div>
+
+<!-- MODAL XÓA -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">Xóa điểm đèn này?</div>
+    <button class="modal-btn mb-confirm" onclick="confirmDelete()">🗑️ Xóa</button>
+    <button class="modal-btn mb-cancel" onclick="closeModal('deleteModal')">Hủy</button>
+  </div>
+</div>
+
+<!-- MODAL CHU KỲ -->
+<div class="modal-overlay" id="cycleModal">
+  <div class="modal">
+    <div class="modal-title">⏱️ Cập nhật chu kỳ đèn</div>
+    <p class="tip">Nhập chu kỳ từng pha + đèn đang ở pha nào với bao nhiêu giây còn lại.</p>
+    <div class="row3" style="margin-bottom:12px">
+      <div class="form-group"><label style="color:var(--green)">🟢 Xanh (s)</label><input type="number" id="eG" min="1" style="text-align:center;font-size:18px;font-weight:700"></div>
+      <div class="form-group"><label style="color:var(--yellow)">🟡 Vàng (s)</label><input type="number" id="eY" min="1" style="text-align:center;font-size:18px;font-weight:700"></div>
+      <div class="form-group"><label style="color:var(--red)">🔴 Đỏ (s)</label><input type="number" id="eR" min="1" style="text-align:center;font-size:18px;font-weight:700"></div>
+    </div>
+    <div class="row2" style="margin-bottom:12px">
+      <div class="form-group"><label>Đang ở pha</label>
+        <select id="eP"><option value="green">🟢 Xanh</option><option value="yellow">🟡 Vàng</option><option value="red">🔴 Đỏ</option></select>
+      </div>
+      <div class="form-group"><label>Còn lại (giây)</label><input type="number" id="eRem" min="0" placeholder="15"></div>
+    </div>
+    <button class="modal-btn" style="background:var(--amber);color:#000;font-weight:700" onclick="saveCycle()">💾 Lưu chu kỳ</button>
+    <button class="modal-btn mb-cancel" onclick="closeModal('cycleModal')">Hủy</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════ DATA ═══════════════
+const SK='den_hong_v4';
+let points=JSON.parse(localStorage.getItem(SK)||'[]');
+
+// Migrate dữ liệu cũ (v3) sang v4
+(function migrate(){
+  const old=localStorage.getItem('den_hong_v3');
+  if(old&&!points.length){
+    try{
+      const ops=JSON.parse(old);
+      ops.forEach(p=>{if(!p.status)p.status='broken';});
+      points=ops;
+      localStorage.setItem(SK,JSON.stringify(points));
+    }catch(e){}
+  }
+  // Đảm bảo mọi điểm đều có status
+  points.forEach(p=>{if(!p.status)p.status='broken';});
+})();
+
+// GPS state
+let myLat=null,myLng=null,mySpeed=0,myHeading=null;
+let driveMode=false;
+let warnedIds=new Set();
+let lastWarnTime=0;
+let notifiedIds=new Set(); // đã thông báo gần đây (reset khi thoát vùng)
+
+// Map
+let map=null,markers=[],myMarker=null,infoWindow=null;
+
+// Intervals
+let hudTick=null;
+let deleteId=null,cycleEditId=null;
+
+// Form state
+let quickStatus='normal';
+let manualStatus='normal';
+let listFilter='all';
+
+// Audio
+let audioCtx=null;
+
+// ═══════════════ STATUS TOGGLE ═══════════════
+function setQuickStatus(s){
+  quickStatus=s;
+  document.getElementById('qst-normal').className='st-btn'+(s==='normal'?' active-normal':'');
+  document.getElementById('qst-broken').className='st-btn'+(s==='broken'?' active-broken':'');
+}
+function setManualStatus(s){
+  manualStatus=s;
+  document.getElementById('mst-normal').className='st-btn'+(s==='normal'?' active-normal':'');
+  document.getElementById('mst-broken').className='st-btn'+(s==='broken'?' active-broken':'');
+  document.getElementById('mTypeRow').style.display=s==='broken'?'flex':'none';
+}
+// Khởi tạo mặc định
+setQuickStatus('normal');
+setManualStatus('normal');
+
+// ═══════════════ LIST FILTER ═══════════════
+function setFilter(f){
+  listFilter=f;
+  ['all','broken','normal'].forEach(x=>{
+    document.getElementById('f'+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle('active',x===f);
+  });
+  renderList();
+}
+
+// ═══════════════ SOUND ═══════════════
+function initAudio(){
+  if(audioCtx)return;
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+}
+function beep(freq=880,dur=0.15,vol=0.3){
+  try{
+    initAudio();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    osc.frequency.value=freq;
+    gain.gain.setValueAtTime(vol,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    osc.start();osc.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+function warnBeep(){
+  beep(1000,0.12,0.5);
+  setTimeout(()=>beep(1000,0.12,0.5),180);
+  setTimeout(()=>beep(1300,0.25,0.6),360);
+}
+function gentleBeep(){
+  beep(700,0.1,0.2);
+  setTimeout(()=>beep(900,0.15,0.25),200);
+}
+function speak(text){
+  if(!('speechSynthesis' in window))return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='vi-VN';u.rate=1.1;u.volume=1;
+  window.speechSynthesis.speak(u);
+}
+
+// ═══════════════ CYCLE MATH ═══════════════
+function getCurrentPhase(p){
+  if(!p.cycle||!p.cycleAnchor)return null;
+  const{green,yellow,red}=p.cycle;
+  const total=green+yellow+red;
+  const elapsed=(Date.now()-p.cycleAnchor)/1000;
+  const pos=((elapsed%total)+total)%total;
+  if(pos<green)return{phase:'green',remaining:Math.ceil(green-pos),phaseDur:green,posInPhase:pos};
+  if(pos<green+yellow)return{phase:'yellow',remaining:Math.ceil(green+yellow-pos),phaseDur:yellow,posInPhase:pos-green};
+  return{phase:'red',remaining:Math.ceil(total-pos),phaseDur:red,posInPhase:pos-green-yellow};
+}
+function getPhaseAtFuture(p,secondsLater){
+  if(!p.cycle||!p.cycleAnchor)return null;
+  const{green,yellow,red}=p.cycle;
+  const total=green+yellow+red;
+  const elapsed=(Date.now()-p.cycleAnchor)/1000+secondsLater;
+  const pos=((elapsed%total)+total)%total;
+  if(pos<green)return{phase:'green',remaining:Math.ceil(green-pos)};
+  if(pos<green+yellow)return{phase:'yellow',remaining:Math.ceil(green+yellow-pos)};
+  return{phase:'red',remaining:Math.ceil(total-pos)};
+}
+function calcAnchor(cycle,phase,remain,now){
+  const{green,yellow,red}=cycle;
+  let pos=0;
+  if(phase==='green')pos=green-remain;
+  else if(phase==='yellow')pos=green+yellow-remain;
+  else pos=green+yellow+red-remain;
+  return now-pos*1000;
+}
+function buildCycle(g,y,r,phase,remain){
+  const gi=parseInt(g),yi=parseInt(y),ri=parseInt(r);
+  if(!gi||!yi||!ri)return{cycle:null,cycleAnchor:null};
+  const cycle={green:gi,yellow:yi,red:ri};
+  const anchor=(phase&&remain!=='')?calcAnchor(cycle,phase,parseFloat(remain)||0,Date.now()):null;
+  return{cycle,cycleAnchor:anchor};
+}
+
+// ═══════════════ DISTANCE & BEARING ═══════════════
+function dist(a,b,c,d){
+  const R=6371000,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180;
+  const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function bearing(lat1,lng1,lat2,lng2){
+  const dL=(lng2-lng1)*Math.PI/180;
+  const la1=lat1*Math.PI/180,la2=lat2*Math.PI/180;
+  const y=Math.sin(dL)*Math.cos(la2);
+  const x=Math.cos(la1)*Math.sin(la2)-Math.sin(la1)*Math.cos(la2)*Math.cos(dL);
+  return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+function angleDiff(a,b){
+  let d=Math.abs(a-b)%360;
+  return d>180?360-d:d;
+}
+function headingText(h){
+  if(h===null)return '--';
+  const dirs=['Bắc','Đông Bắc','Đông','Đông Nam','Nam','Tây Nam','Tây','Tây Bắc'];
+  return dirs[Math.round(h/45)%8]+` (${Math.round(h)}°)`;
+}
+
+// ═══════════════ DRIVE MODE ═══════════════
+function toggleDriveMode(){
+  initAudio();
+  driveMode=!driveMode;
+  const btn=document.getElementById('driveBtn');
+  btn.textContent=driveMode?'⏹ Dừng':'🚗 Lái xe';
+  btn.classList.toggle('active',driveMode);
+  if(driveMode){
+    warnedIds.clear();notifiedIds.clear();
+    showToast('🚗 Chế độ lái xe BẬT');
+    switchTab('hud');
+  } else {
+    showToast('⏹ Đã tắt chế độ lái xe');
+  }
+}
+
+// ═══════════════ GPS ═══════════════
+function startGPS(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.watchPosition(pos=>{
+    myLat=pos.coords.latitude;
+    myLng=pos.coords.longitude;
+    mySpeed=pos.coords.speed||0;
+    if(pos.coords.heading!==null&&!isNaN(pos.coords.heading))myHeading=pos.coords.heading;
+
+    document.getElementById('hudSpeed').textContent=Math.round(mySpeed*3.6);
+    document.getElementById('hudHeading').textContent=headingText(myHeading);
+    document.getElementById('gpsStatus').textContent=`📍 ${myLat.toFixed(4)}, ${myLng.toFixed(4)}`;
+    document.getElementById('gpsDot').className='hud-gps-dot ok';
+
+    updateMyMarker();
+    updateStats();
+    if(driveMode)runHUD();
+  },err=>{
+    document.getElementById('gpsStatus').textContent='📍 Không có GPS — bật quyền vị trí';
+    document.getElementById('gpsDot').className='hud-gps-dot';
+  },{enableHighAccuracy:true,maximumAge:2000,timeout:15000});
+}
+
+function updateMyMarker(){
+  if(!map||!myLat)return;
+  const pos={lat:myLat,lng:myLng};
+  if(!myMarker){
+    myMarker=new google.maps.Marker({
+      position:pos,map,zIndex:999,title:'Vị trí của tôi',
+      icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#58a6ff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2,rotation:myHeading||0}
+    });
+  } else {
+    myMarker.setPosition(pos);
+    if(myHeading!==null)myMarker.setIcon({path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#58a6ff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2,rotation:myHeading});
+  }
+}
+
+function centerMe(){
+  if(!myLat){showToast('⏳ Chưa có GPS');return;}
+  map.panTo({lat:myLat,lng:myLng});map.setZoom(16);
+}
+
+// ═══════════════ HUD ENGINE ═══════════════
+function runHUD(){
+  if(!myLat)return;
+  const CONE=60,MAX_DIST=2000;
+  const ahead=[],others=[];
+
+  points.forEach(p=>{
+    const d=dist(myLat,myLng,p.lat,p.lng);
+    if(d>MAX_DIST)return;
+    const bear=bearing(myLat,myLng,p.lat,p.lng);
+    const inCone=myHeading!==null?angleDiff(myHeading,bear)<CONE:true;
+    if(inCone)ahead.push({...p,_dist:d,_bear:bear});
+    else others.push({...p,_dist:d,_bear:bear});
+  });
+
+  ahead.sort((a,b)=>a._dist-b._dist);
+  others.sort((a,b)=>a._dist-b._dist);
+
+  document.getElementById('statNearby').textContent=ahead.length;
+  renderHUD(ahead,others);
+}
+
+function renderHUD(ahead,others){
+  const mainEl=document.getElementById('hudMain');
+  const othersEl=document.getElementById('hudOthers');
+  const othersListEl=document.getElementById('hudOthersList');
+
+  if(ahead.length===0){
+    mainEl.innerHTML=`<div class="hud-no-light">
+      <div class="nl-icon">✅</div>
+      <div class="nl-text">Không có đèn phía trước</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Đang theo dõi ${points.length} điểm trong CSDL</div>
+    </div>`;
+  } else {
+    // Ưu tiên đèn hỏng nếu có, không thì lấy đèn gần nhất
+    const brokenAhead=ahead.filter(x=>x.status==='broken');
+    const p=brokenAhead.length?brokenAhead[0]:ahead[0];
+    const isBroken=p.status==='broken';
+
+    const d=p._dist;
+    const speedMs=mySpeed||10/3.6;
+    const etaSec=d/speedMs;
+
+    const curPhase=getCurrentPhase(p);
+    const futurePhase=p.cycleAnchor?getPhaseAtFuture(p,etaSec):null;
+
+    const phaseColor={green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)'};
+    const phaseLabel={green:'🟢 Đang XANH',yellow:'🟡 Đang VÀNG',red:'🔴 Đang ĐỎ'};
+    const phaseLabelShort={green:'Xanh',yellow:'Vàng',red:'Đỏ'};
+
+    // ── Cảnh báo âm thanh & giọng nói ──
+    const now2=Date.now();
+    if(driveMode&&d<500&&(now2-lastWarnTime)>8000){
+      if(isBroken&&!warnedIds.has(p.id)){
+        warnedIds.add(p.id);lastWarnTime=now2;
+        warnBeep();
+        const msg=futurePhase
+          ?`Chú ý! Đèn hỏng phía trước ${Math.round(d)} mét. Theo chu kỳ thường ngày khi tới nơi đèn đang ${phaseLabelShort[futurePhase.phase]}.`
+          :`Chú ý! Đèn giao thông hỏng phía trước ${Math.round(d)} mét, quan sát cẩn thận.`;
+        setTimeout(()=>speak(msg),400);
+      } else if(!isBroken&&!notifiedIds.has(p.id)){
+        notifiedIds.add(p.id);lastWarnTime=now2;
+        gentleBeep();
+        if(futurePhase){
+          const msg=`Đèn phía trước ${Math.round(d)} mét. Khi tới nơi đèn đang ${phaseLabelShort[futurePhase.phase]}.`;
+          setTimeout(()=>speak(msg),300);
+        }
+      }
+    }
+    if(d>600){warnedIds.delete(p.id);notifiedIds.delete(p.id);}
+
+    const glowColor=isBroken?'var(--red)':(curPhase?phaseColor[curPhase.phase]:'var(--green)');
+
+    // Arrival prediction
+    let arrivalHtml='';
+    if(futurePhase){
+      const fc=phaseColor[futurePhase.phase];
+      const fl=phaseLabel[futurePhase.phase];
+      const extra=isBroken?'<div style="font-size:10px;color:var(--muted);margin-top:3px">⚠️ Đây là chu kỳ thường ngày (đèn đang hỏng)</div>':'';
+      arrivalHtml=`<div class="hlc-arrival-warn show" style="background:${fc}20;border:1px solid ${fc}50;color:${fc}">
+        Khi đến nơi: ${fl} còn ${futurePhase.remaining}s${extra}
+      </div>`;
+    }
+
+    // ETA text
+    const etaMin=Math.floor(etaSec/60);
+    const etaS=Math.round(etaSec%60);
+    const etaText=etaMin>0?`~${etaMin} phút ${etaS}s`:`~${Math.round(etaSec)} giây`;
+    const distText=d<1000?`${Math.round(d)}m`:`${(d/1000).toFixed(1)}km`;
+
+    // Phase display
+    let phaseHtml='';
+    if(curPhase){
+      const pct=Math.max(0,Math.min(100,(1-curPhase.remaining/curPhase.phaseDur)*100));
+      const c=phaseColor[curPhase.phase];
+      const tag=isBroken?`<div style="font-size:10px;color:var(--amber);margin-top:2px">⚠️ Chu kỳ thường ngày (đèn đang hỏng)</div>`:'';
+      phaseHtml=`
+        <div class="hlc-phase-label" style="color:${c}">${phaseLabel[curPhase.phase]}</div>
+        <div class="hlc-phase-timer" style="color:${c}">${curPhase.remaining}<span style="font-size:18px;font-weight:400">s</span></div>
+        <div class="hlc-phase-bar-wrap"><div class="hlc-phase-bar" style="width:${pct}%;background:${c}"></div></div>
+        ${tag}`;
+    } else {
+      phaseHtml=`<div style="color:var(--muted);font-size:12px;margin-top:6px">⏱️ Chưa có dữ liệu chu kỳ<br><span style="font-size:10px">Bấm ⏱️ trong danh sách để cập nhật</span></div>`;
+    }
+
+    // Broken alert banner
+    const brokenBanner=isBroken?`<div class="broken-alert">
+      <div class="broken-alert-icon">⚠️</div>
+      <div class="broken-alert-text">
+        <div class="broken-alert-title">ĐÈN NÀY ĐANG HỎNG!</div>
+        <div class="broken-alert-sub">${p.type||'Sự cố đèn giao thông'} · Quan sát cẩn thận</div>
+      </div>
+    </div>`:'';
+
+    // Bulb state: nếu đèn hỏng → nhấp nháy vàng
+    let bulbR='',bulbY='',bulbG='';
+    if(isBroken){
+      bulbY='blink';
+    } else if(curPhase){
+      bulbR=curPhase.phase==='red'?'on':'';
+      bulbY=curPhase.phase==='yellow'?'on':'';
+      bulbG=curPhase.phase==='green'?'on':'';
+    }
+
+    mainEl.innerHTML=`<div class="hud-light-card ${isBroken?'broken-card':'normal-card'}">
+      <div class="hlc-glow" style="background:${glowColor}"></div>
+      ${brokenBanner}
+      <div class="hlc-top">
+        <div class="hlc-traffic-light">
+          <div class="hlc-bulb bulb-r ${bulbR}"></div>
+          <div class="hlc-bulb bulb-y ${bulbY}"></div>
+          <div class="hlc-bulb bulb-g ${bulbG}"></div>
+        </div>
+        <div class="hlc-info">
+          <div class="hlc-name">${p.name}</div>
+          <div class="hlc-addr">${p.addr||''}</div>
+          ${phaseHtml}
+        </div>
+      </div>
+      <div class="hlc-eta">
+        <div class="hlc-eta-icon">🚗</div>
+        <div class="hlc-eta-body">
+          <div class="hlc-eta-dist">${distText} phía trước</div>
+          <div class="hlc-eta-time">${Math.round(mySpeed*3.6)} km/h → tới nơi ${etaText}</div>
+        </div>
+        <div class="hlc-eta-prediction" style="color:var(--amber)">${Math.round(etaSec)}s</div>
+      </div>
+      ${arrivalHtml}
+      ${ahead.length>1?`<div style="margin-top:8px;font-size:11px;color:var(--muted)">+ ${ahead.length-1} đèn khác phía trước</div>`:''}
+    </div>`;
+  }
+
+  // Others strip
+  if(others.length>0){
+    othersEl.style.display='block';
+    othersListEl.innerHTML=others.slice(0,6).map(p=>{
+      const d=p._dist<1000?`${Math.round(p._dist)}m`:`${(p._dist/1000).toFixed(1)}km`;
+      const cur=getCurrentPhase(p);
+      const phaseStr=cur?`${cur.phase==='green'?'🟢':cur.phase==='yellow'?'🟡':'🔴'} ${cur.remaining}s`:'';
+      const chipClass=p.status==='broken'?'broken-chip':'normal-chip';
+      return`<div class="hud-other-chip ${chipClass}" onclick="viewMap(${p.lat},${p.lng})">
+        <div class="hud-oc-name">${p.status==='broken'?'⚠️':'🚦'} ${p.name}</div>
+        <div class="hud-oc-dist">📍 ${d}</div>
+        ${phaseStr?`<div class="hud-oc-phase">${phaseStr}</div>`:''}
+      </div>`;
+    }).join('');
+  } else othersEl.style.display='none';
+}
+
+// HUD + list tick mỗi giây
+function startHudTick(){
+  if(hudTick)clearInterval(hudTick);
+  hudTick=setInterval(()=>{
+    if(myLat&&driveMode)runHUD();
+    tickListClocks();
+  },1000);
+}
+
+// ═══════════════ MAP ═══════════════
+function initMap(){
+  map=new google.maps.Map(document.getElementById('map'),{
+    center:{lat:9.2845,lng:105.7243},zoom:14,
+    styles:darkStyle(),disableDefaultUI:true,gestureHandling:'greedy',
+    zoomControl:true,zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}
+  });
+  infoWindow=new google.maps.InfoWindow();
+  map.addListener('click',e=>{
+    document.getElementById('mLat').value=e.latLng.lat().toFixed(6);
+    document.getElementById('mLng').value=e.latLng.lng().toFixed(6);
+    switchTab('add');showToast('📍 Đã chọn vị trí — điền thêm rồi lưu');
+  });
+  renderMarkers();startGPS();startHudTick();
+}
+
+function darkStyle(){return[
+  {elementType:'geometry',stylers:[{color:'#1d2530'}]},
+  {elementType:'labels.text.fill',stylers:[{color:'#8b949e'}]},
+  {elementType:'labels.text.stroke',stylers:[{color:'#1d2530'}]},
+  {featureType:'road',elementType:'geometry',stylers:[{color:'#2c3645'}]},
+  {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#c0c8d8'}]},
+  {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1927'}]},
+  {featureType:'poi',stylers:[{visibility:'off'}]},
+];}
+
+function renderMarkers(){
+  markers.forEach(m=>m.setMap(null));markers=[];
+  points.forEach(p=>{
+    const isBroken=p.status==='broken';
+    const m=new google.maps.Marker({
+      position:{lat:p.lat,lng:p.lng},map,title:p.name,
+      icon:{
+        path:google.maps.SymbolPath.CIRCLE,scale:11,
+        fillColor:isBroken?'#f85149':'#3fb950',fillOpacity:1,
+        strokeColor:'#fff',strokeWeight:2
+      }
+    });
+    m.addListener('click',()=>{
+      const cyc=p.cycle;
+      infoWindow.setContent(`<div style="padding:4px;min-width:160px;font-family:-apple-system,sans-serif">
+        <div style="font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:3px">${isBroken?'⚠️':'🚦'} ${p.name}</div>
+        <div style="font-size:11px;color:${isBroken?'#f85149':'#3fb950'}">${isBroken?'ĐÈN HỎNG':'Đèn bình thường'}</div>
+        ${p.type&&isBroken?`<div style="font-size:11px;color:#8b949e">${p.type}</div>`:''}
+        ${cyc?`<div style="font-size:11px;color:#8b949e;margin-top:3px">⏱️ Xanh ${cyc.green}s · Vàng ${cyc.yellow}s · Đỏ ${cyc.red}s</div>`:''}
+        <a style="margin-top:8px;display:inline-block;background:#58a6ff;color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;text-decoration:none" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank">🧭 Chỉ đường</a>
+      </div>`);
+      infoWindow.open(map,m);
+    });
+    markers.push(m);
+  });
+}
+
+// ═══════════════ ADD ═══════════════
+function addByGPS(){
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const lat=pos.coords.latitude,lng=pos.coords.longitude;
+    const name=document.getElementById('quickName').value.trim()||(quickStatus==='broken'?`Đèn hỏng ${new Date().toLocaleTimeString('vi-VN')}`:`Đèn giao thông ${new Date().toLocaleTimeString('vi-VN')}`);
+    const cyc=buildCycle(document.getElementById('qG').value,document.getElementById('qY').value,document.getElementById('qR').value,document.getElementById('qP').value,document.getElementById('qRem').value);
+    savePoint({
+      id:Date.now(),name,addr:`${lat.toFixed(5)},${lng.toFixed(5)}`,lat,lng,
+      type:quickStatus==='broken'?'Đèn tối hoàn toàn':'Đèn bình thường',
+      status:quickStatus,note:'GPS nhanh',time:Date.now(),...cyc
+    });
+    document.getElementById('quickName').value='';
+    ['qG','qY','qR','qRem'].forEach(i=>document.getElementById(i).value='');
+    document.getElementById('qP').value='';
+    showToast('✅ Đã lưu!');
+  },()=>showToast('❌ Không lấy được GPS'),{enableHighAccuracy:true,timeout:10000});
+}
+
+function addManual(){
+  const name=document.getElementById('mName').value.trim();
+  const lat=parseFloat(document.getElementById('mLat').value);
+  const lng=parseFloat(document.getElementById('mLng').value);
+  if(!name){showToast('⚠️ Nhập tên địa điểm');return;}
+  if(isNaN(lat)||isNaN(lng)){showToast('⚠️ Nhập tọa độ hoặc chọn trên bản đồ');return;}
+  const cyc=buildCycle(document.getElementById('mG').value,document.getElementById('mY').value,document.getElementById('mR').value,document.getElementById('mP').value,document.getElementById('mRem').value);
+  savePoint({
+    id:Date.now(),name,addr:document.getElementById('mAddr').value.trim(),lat,lng,
+    type:manualStatus==='broken'?document.getElementById('mType').value:'Đèn bình thường',
+    status:manualStatus,
+    note:document.getElementById('mNote').value.trim(),time:Date.now(),...cyc
+  });
+  ['mName','mAddr','mLat','mLng','mNote','mG','mY','mR','mRem'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('mP').value='';
+  showToast('✅ Đã lưu!');
+}
+
+function quickAddGPS(){
+  if(!myLat){showToast('⏳ Chưa có GPS');return;}
+  const name=prompt('Tên điểm:')||`Đèn hỏng ${new Date().toLocaleTimeString('vi-VN')}`;
+  savePoint({id:Date.now(),name,addr:'',lat:myLat,lng:myLng,type:'Đèn tối hoàn toàn',status:'broken',note:'Thêm nhanh',time:Date.now(),cycle:null,cycleAnchor:null});
+  showToast('✅ Đã lưu!');
+}
+
+function savePoint(p){
+  points.push(p);localStorage.setItem(SK,JSON.stringify(points));
+  renderMarkers();renderList();updateStats();
+}
+
+// ═══════════════ 70MAI EXIF ═══════════════
+function handleCamFiles(files){
+  if(!files.length)return;
+  document.getElementById('camResults').style.display='block';
+  const list=document.getElementById('camResultList');
+  list.innerHTML='<div style="color:var(--muted);padding:10px;font-size:13px">⏳ Đang đọc ảnh...</div>';
+  const results=[];let done=0;
+  Array.from(files).forEach((file,idx)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      let gps=null;
+      try{gps=parseExif(new DataView(e.target.result),e.target.result);}catch(err){}
+      results[idx]={file,gps,thumb:URL.createObjectURL(file)};
+      if(++done===files.length)renderCamResults(results);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function parseExif(view,buf){
+  if(view.getUint16(0)!==0xFFD8)return null;
+  let off=2;
+  while(off<view.byteLength-2){
+    const mk=view.getUint16(off);
+    if(mk===0xFFE1){
+      const len=view.getUint16(off+2);
+      return parseExifBlock(new DataView(buf.slice(off+4,off+2+len)));
+    }
+    if(mk===0xFFDA)break;
+    const sl=view.getUint16(off+2);if(sl<2)break;off+=2+sl;
+  }
+  return null;
+}
+
+function parseExifBlock(v){
+  const hdr=String.fromCharCode(v.getUint8(0),v.getUint8(1),v.getUint8(2),v.getUint8(3));
+  if(hdr!=='Exif')return null;
+  const t=6;const le=(v.getUint16(t)===0x4949);
+  const g16=(o)=>v.getUint16(o,le);const g32=(o)=>v.getUint32(o,le);
+  const ifd=t+g32(t+4);const n=g16(ifd);
+  let goff=null;
+  for(let i=0;i<n;i++){const e=ifd+2+i*12;if(g16(e)===0x8825){goff=t+g32(e+8);break;}}
+  if(!goff)return null;
+  const gc=g16(goff);const G={};
+  for(let i=0;i<gc;i++){
+    const e=goff+2+i*12;const tag=g16(e);
+    if(tag===1||tag===3)G[tag]=String.fromCharCode(v.getUint8(e+8));
+    else if(tag===2||tag===4){
+      const do_=t+g32(e+8);
+      const rat=(o)=>{const n=g32(o),d=g32(o+4);return d?n/d:0;};
+      G[tag]=rat(do_)+rat(do_+8)/60+rat(do_+16)/3600;
+    }
+  }
+  if(G[2]===undefined||G[4]===undefined)return null;
+  let lat=G[2],lng=G[4];
+  if(G[1]==='S')lat=-lat;if(G[3]==='W')lng=-lng;
+  return{lat,lng};
+}
+
+function renderCamResults(results){
+  const list=document.getElementById('camResultList');list.innerHTML='';
+  results.forEach((r,i)=>{
+    const box=document.createElement('div');box.className='section-box';
+    if(r.gps){
+      box.innerHTML=`
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+          <img src="${r.thumb}" style="width:72px;height:52px;object-fit:cover;border-radius:6px;flex-shrink:0">
+          <div><div class="exif-ok">✅ Đọc GPS thành công</div>
+          <div style="font-size:12px;color:var(--muted);font-family:monospace">${r.gps.lat.toFixed(6)}, ${r.gps.lng.toFixed(6)}</div>
+          <div style="font-size:11px;color:var(--muted)">${r.file.name}</div></div>
+        </div>
+        <div class="form-group"><label>Loại đèn</label>
+          <div class="status-toggle">
+            <div class="st-btn active-broken" id="cst${i}" onclick="camToggle(${i},'broken')">🔴 Đèn hỏng</div>
+            <div class="st-btn" id="csn${i}" onclick="camToggle(${i},'normal')">🟢 Bình thường</div>
+          </div>
+        </div>
+        <div class="form-group"><label>Tên điểm</label><input type="text" id="cn${i}" value="Đèn hỏng ${new Date().toLocaleDateString('vi-VN')}"></div>
+        <div class="form-group"><label>Chu kỳ đèn (nếu biết)</label>
+          <div class="row3">
+            <div><label style="color:var(--green)">🟢 Xanh</label><input type="number" id="cg${i}" placeholder="30"></div>
+            <div><label style="color:var(--yellow)">🟡 Vàng</label><input type="number" id="cy${i}" placeholder="5"></div>
+            <div><label style="color:var(--red)">🔴 Đỏ</label><input type="number" id="cr${i}" placeholder="30"></div>
+          </div>
+        </div>
+        <button class="btn btn-green" onclick="saveCamPoint(${i},${r.gps.lat},${r.gps.lng})">📍 Lưu điểm này</button>`;
+    } else {
+      box.innerHTML=`
+        <div style="display:flex;gap:10px;align-items:center">
+          <img src="${r.thumb}" style="width:72px;height:52px;object-fit:cover;border-radius:6px;flex-shrink:0">
+          <div><div class="exif-err">❌ Ảnh không có GPS EXIF</div>
+          <div style="font-size:11px;color:var(--muted)">${r.file.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">Vào 70mai App → Cài đặt → bật GPS</div></div>
+        </div>`;
+    }
+    list.appendChild(box);
+  });
+}
+
+const camStatusMap={};
+function camToggle(i,s){
+  camStatusMap[i]=s;
+  document.getElementById(`cst${i}`).className='st-btn'+(s==='broken'?' active-broken':'');
+  document.getElementById(`csn${i}`).className='st-btn'+(s==='normal'?' active-normal':'');
+}
+
+function saveCamPoint(i,lat,lng){
+  const name=document.getElementById(`cn${i}`).value.trim()||'Điểm đèn từ 70mai';
+  const status=camStatusMap[i]||'broken';
+  const cyc=buildCycle(document.getElementById(`cg${i}`).value,document.getElementById(`cy${i}`).value,document.getElementById(`cr${i}`).value,'','');
+  savePoint({
+    id:Date.now()+i,name,addr:`${lat.toFixed(5)},${lng.toFixed(5)}`,lat,lng,
+    type:status==='broken'?'Từ camera 70mai':'Đèn bình thường',
+    status,note:'Import từ ảnh 70mai',time:Date.now(),...cyc
+  });
+  showToast(`✅ Đã lưu: ${name}`);
+}
+
+// ═══════════════ LIST ═══════════════
+function renderList(){
+  const c=document.getElementById('listContainer');
+  let filtered=points;
+  if(listFilter==='broken')filtered=points.filter(p=>p.status==='broken');
+  else if(listFilter==='normal')filtered=points.filter(p=>p.status!=='broken');
+
+  if(!filtered.length){
+    c.innerHTML='<div class="list-empty"><div class="ei">🚦</div>Chưa có điểm nào</div>';return;
+  }
+  c.innerHTML=[...filtered].sort((a,b)=>b.time-a.time).map(p=>{
+    const isBroken=p.status==='broken';
+    const d=myLat?Math.round(dist(myLat,myLng,p.lat,p.lng)):null;
+    const dT=d!=null?(d<1000?`${d}m`:`${(d/1000).toFixed(1)}km`):'--';
+    const hasCyc=p.cycle&&p.cycleAnchor;
+    const statusBadge=isBroken?`<span class="badge br">🔴 Hỏng</span>`:`<span class="badge bg">🟢 Bình thường</span>`;
+    return`<div class="card ${isBroken?'card-broken':'card-normal'}" style="${d!=null&&d<300?'background:#1a1015;':''}">
+      <div style="font-size:22px;flex-shrink:0;margin-top:2px">${isBroken?'⚠️':'🚦'}</div>
+      <div class="card-body">
+        <div class="card-name">${p.name}</div>
+        <div class="card-addr">${p.addr||`${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`}</div>
+        <div class="card-meta">
+          ${statusBadge}
+          <span class="badge ba">📍 ${dT}</span>
+          ${hasCyc?`<span class="badge bblue">⏱️ ${p.cycle.green}+${p.cycle.yellow}+${p.cycle.red}s</span>`:`<span class="badge bm">⏱️ Chưa có chu kỳ</span>`}
+        </div>
+        ${hasCyc?`<div class="card-clock">
+          <div class="mini-lights">
+            <div class="mb mb-r" id="mr${p.id}"></div>
+            <div class="mb mb-y" id="my${p.id}"></div>
+            <div class="mb mb-g" id="mg${p.id}"></div>
+          </div>
+          <div style="flex:1">
+            <div class="mini-info" id="mi${p.id}">Đang tính...</div>
+            <div class="mini-bar-wrap"><div class="mini-bar" id="pb${p.id}"></div></div>
+            ${isBroken?`<div class="mini-broken-tag">⚠️ Đây là chu kỳ thường ngày (đèn đang hỏng)</div>`:''}
+          </div>
+          <div class="mini-timer" id="mt${p.id}">--s</div>
+        </div>`:''}
+      </div>
+      <div class="card-actions">
+        <button class="icon-btn ib-nav" onclick="navTo(${p.lat},${p.lng})">🧭</button>
+        <button class="icon-btn ib-map" onclick="viewMap(${p.lat},${p.lng})">🗺️</button>
+        <button class="icon-btn ib-cyc" onclick="openCycleModal(${p.id})">⏱️</button>
+        <button class="icon-btn ib-del" onclick="askDelete(${p.id})">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function tickListClocks(){
+  const pc={green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)'};
+  const pl={green:'🟢 Đang xanh',yellow:'🟡 Đang vàng',red:'🔴 Đang đỏ'};
+  points.forEach(p=>{
+    if(!p.cycle||!p.cycleAnchor)return;
+    const mt=document.getElementById(`mt${p.id}`);if(!mt)return;
+    const cur=getCurrentPhase(p);if(!cur)return;
+    const pct=Math.max(0,Math.min(100,(1-cur.remaining/cur.phaseDur)*100));
+    mt.textContent=cur.remaining+'s';mt.style.color=pc[cur.phase];
+    document.getElementById(`mi${p.id}`).textContent=pl[cur.phase];
+    const pb=document.getElementById(`pb${p.id}`);
+    pb.style.width=pct+'%';pb.style.background=pc[cur.phase];
+    document.getElementById(`mr${p.id}`).classList.toggle('on',cur.phase==='red');
+    document.getElementById(`my${p.id}`).classList.toggle('on',cur.phase==='yellow');
+    document.getElementById(`mg${p.id}`).classList.toggle('on',cur.phase==='green');
+  });
+}
+
+// ═══════════════ CYCLE MODAL ═══════════════
+function openCycleModal(id){
+  cycleEditId=id;
+  const p=points.find(x=>x.id===id);
+  document.getElementById('eG').value=p&&p.cycle?p.cycle.green:'';
+  document.getElementById('eY').value=p&&p.cycle?p.cycle.yellow:'';
+  document.getElementById('eR').value=p&&p.cycle?p.cycle.red:'';
+  document.getElementById('eP').value='red';
+  document.getElementById('eRem').value='';
+  document.getElementById('cycleModal').classList.add('active');
+}
+function saveCycle(){
+  const p=points.find(x=>x.id===cycleEditId);if(!p)return;
+  const g=parseInt(document.getElementById('eG').value);
+  const y=parseInt(document.getElementById('eY').value);
+  const r=parseInt(document.getElementById('eR').value);
+  if(!g||!y||!r){showToast('⚠️ Nhập đủ 3 giá trị');return;}
+  const phase=document.getElementById('eP').value;
+  const remain=parseFloat(document.getElementById('eRem').value)||0;
+  p.cycle={green:g,yellow:y,red:r};
+  p.cycleAnchor=calcAnchor(p.cycle,phase,remain,Date.now());
+  localStorage.setItem(SK,JSON.stringify(points));
+  renderList();closeModal('cycleModal');
+  showToast('✅ Đã cập nhật chu kỳ!');
+}
+
+// ═══════════════ DELETE ═══════════════
+function askDelete(id){deleteId=id;document.getElementById('deleteModal').classList.add('active');}
+function confirmDelete(){
+  points=points.filter(p=>p.id!==deleteId);
+  localStorage.setItem(SK,JSON.stringify(points));
+  renderMarkers();renderList();updateStats();
+  closeModal('deleteModal');showToast('🗑️ Đã xóa');
+}
+function closeModal(id){document.getElementById(id).classList.remove('active');deleteId=null;cycleEditId=null;}
+
+function navTo(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,'_blank');}
+function viewMap(lat,lng){switchTab('map');if(map){map.panTo({lat,lng});map.setZoom(17);}}
+
+// ═══════════════ STATS ═══════════════
+function updateStats(){
+  const broken=points.filter(p=>p.status==='broken').length;
+  const normal=points.filter(p=>p.status!=='broken').length;
+  document.getElementById('statTotal').textContent=points.length;
+  document.getElementById('statBroken').textContent=broken;
+  document.getElementById('statNormal').textContent=normal;
+}
+
+// ═══════════════ TABS ═══════════════
+function switchTab(tab){
+  ['hud','map','list','add','cam'].forEach((t,i)=>{
+    document.querySelectorAll('.tab')[i].classList.toggle('active',t===tab);
+    document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
+  });
+  if(tab==='list')renderList();
+  if(tab==='map'&&map)google.maps.event.trigger(map,'resize');
+}
+
+// ═══════════════ TOAST ═══════════════
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+updateStats();
+</script>
+
+<script>
+(function(){
+  const p=new URLSearchParams(window.location.search);
+  const key=p.get('key')||'AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNDE';
+  const s=document.createElement('script');
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&language=vi&region=VN`;
+  s.async=true;s.defer=true;document.body.appendChild(s);
+})();
+</script>
+</body>
+</html>
