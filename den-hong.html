@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Theo Dõi Đèn Giao Thông</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -105,7 +107,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .hud-oc-phase{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
 
 /* ═══ MAP ═══ */
-#map{flex:1;width:100%}
+#map{flex:1;width:100%;z-index:0}
+.leaflet-container{background:#1d2530}
+.leaflet-tile{filter:brightness(.85) saturate(.8)}
 .map-fab{position:absolute;bottom:80px;right:14px;z-index:200;display:flex;flex-direction:column;gap:10px}
 .fab-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.5);transition:transform .15s}
 .fab-btn:active{transform:scale(.92)}
@@ -455,7 +459,7 @@ let lastWarnTime=0;
 let notifiedIds=new Set(); // đã thông báo gần đây (reset khi thoát vùng)
 
 // Map
-let map=null,markers=[],myMarker=null,infoWindow=null;
+let map=null,markers=[],myMarker=null,myCircle=null;
 
 // Intervals
 let hudTick=null;
@@ -629,21 +633,23 @@ function startGPS(){
 
 function updateMyMarker(){
   if(!map||!myLat)return;
-  const pos={lat:myLat,lng:myLng};
+  const rot=myHeading||0;
+  const icon=L.divIcon({
+    className:'',
+    html:`<div style="width:20px;height:20px;transform:rotate(${rot}deg);font-size:18px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))">🔵</div>`,
+    iconSize:[20,20],iconAnchor:[10,10]
+  });
   if(!myMarker){
-    myMarker=new google.maps.Marker({
-      position:pos,map,zIndex:999,title:'Vị trí của tôi',
-      icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#58a6ff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2,rotation:myHeading||0}
-    });
+    myMarker=L.marker([myLat,myLng],{icon,zIndexOffset:1000}).addTo(map);
   } else {
-    myMarker.setPosition(pos);
-    if(myHeading!==null)myMarker.setIcon({path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#58a6ff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2,rotation:myHeading});
+    myMarker.setLatLng([myLat,myLng]);
+    myMarker.setIcon(icon);
   }
 }
 
 function centerMe(){
   if(!myLat){showToast('⏳ Chưa có GPS');return;}
-  map.panTo({lat:myLat,lng:myLng});map.setZoom(16);
+  map.setView([myLat,myLng],16);
 }
 
 // ═══════════════ HUD ENGINE ═══════════════
@@ -824,55 +830,39 @@ function startHudTick(){
   },1000);
 }
 
-// ═══════════════ MAP ═══════════════
+// ═══════════════ MAP (Leaflet + OpenStreetMap) ═══════════════
 function initMap(){
-  map=new google.maps.Map(document.getElementById('map'),{
-    center:{lat:9.2845,lng:105.7243},zoom:14,
-    styles:darkStyle(),disableDefaultUI:true,gestureHandling:'greedy',
-    zoomControl:true,zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}
-  });
-  infoWindow=new google.maps.InfoWindow();
-  map.addListener('click',e=>{
-    document.getElementById('mLat').value=e.latLng.lat().toFixed(6);
-    document.getElementById('mLng').value=e.latLng.lng().toFixed(6);
+  map=L.map('map',{zoomControl:true}).setView([9.2845,105.7243],14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© OpenStreetMap',maxZoom:19
+  }).addTo(map);
+  map.on('click',e=>{
+    document.getElementById('mLat').value=e.latlng.lat.toFixed(6);
+    document.getElementById('mLng').value=e.latlng.lng.toFixed(6);
     switchTab('add');showToast('📍 Đã chọn vị trí — điền thêm rồi lưu');
   });
   renderMarkers();startGPS();startHudTick();
 }
 
-function darkStyle(){return[
-  {elementType:'geometry',stylers:[{color:'#1d2530'}]},
-  {elementType:'labels.text.fill',stylers:[{color:'#8b949e'}]},
-  {elementType:'labels.text.stroke',stylers:[{color:'#1d2530'}]},
-  {featureType:'road',elementType:'geometry',stylers:[{color:'#2c3645'}]},
-  {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#c0c8d8'}]},
-  {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1927'}]},
-  {featureType:'poi',stylers:[{visibility:'off'}]},
-];}
-
 function renderMarkers(){
-  markers.forEach(m=>m.setMap(null));markers=[];
+  markers.forEach(m=>map.removeLayer(m));markers=[];
   points.forEach(p=>{
     const isBroken=p.status==='broken';
-    const m=new google.maps.Marker({
-      position:{lat:p.lat,lng:p.lng},map,title:p.name,
-      icon:{
-        path:google.maps.SymbolPath.CIRCLE,scale:11,
-        fillColor:isBroken?'#f85149':'#3fb950',fillOpacity:1,
-        strokeColor:'#fff',strokeWeight:2
-      }
+    const color=isBroken?'#f85149':'#3fb950';
+    const icon=L.divIcon({
+      className:'',
+      html:`<div style="width:22px;height:22px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:10px">${isBroken?'⚠️':'🚦'}</div>`,
+      iconSize:[22,22],iconAnchor:[11,11]
     });
-    m.addListener('click',()=>{
-      const cyc=p.cycle;
-      infoWindow.setContent(`<div style="padding:4px;min-width:160px;font-family:-apple-system,sans-serif">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:3px">${isBroken?'⚠️':'🚦'} ${p.name}</div>
-        <div style="font-size:11px;color:${isBroken?'#f85149':'#3fb950'}">${isBroken?'ĐÈN HỎNG':'Đèn bình thường'}</div>
-        ${p.type&&isBroken?`<div style="font-size:11px;color:#8b949e">${p.type}</div>`:''}
-        ${cyc?`<div style="font-size:11px;color:#8b949e;margin-top:3px">⏱️ Xanh ${cyc.green}s · Vàng ${cyc.yellow}s · Đỏ ${cyc.red}s</div>`:''}
-        <a style="margin-top:8px;display:inline-block;background:#58a6ff;color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;text-decoration:none" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank">🧭 Chỉ đường</a>
-      </div>`);
-      infoWindow.open(map,m);
-    });
+    const cyc=p.cycle;
+    const m=L.marker([p.lat,p.lng],{icon}).addTo(map);
+    m.bindPopup(`<div style="min-width:160px;font-family:-apple-system,sans-serif">
+      <div style="font-size:13px;font-weight:700;margin-bottom:3px">${isBroken?'⚠️':'🚦'} ${p.name}</div>
+      <div style="font-size:11px;color:${color};margin-bottom:4px">${isBroken?'ĐÈN HỎNG':'Đèn bình thường'}</div>
+      ${p.type&&isBroken?`<div style="font-size:11px;color:#666">${p.type}</div>`:''}
+      ${cyc?`<div style="font-size:11px;color:#666;margin-top:3px">⏱️ Xanh ${cyc.green}s · Vàng ${cyc.yellow}s · Đỏ ${cyc.red}s</div>`:''}
+      <a style="margin-top:8px;display:inline-block;background:#58a6ff;color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;text-decoration:none" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank">🧭 Chỉ đường</a>
+    </div>`);
     markers.push(m);
   });
 }
@@ -1148,7 +1138,7 @@ function confirmDelete(){
 function closeModal(id){document.getElementById(id).classList.remove('active');deleteId=null;cycleEditId=null;}
 
 function navTo(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,'_blank');}
-function viewMap(lat,lng){switchTab('map');if(map){map.panTo({lat,lng});map.setZoom(17);}}
+function viewMap(lat,lng){switchTab('map');if(map){map.setView([lat,lng],17);}}
 
 // ═══════════════ STATS ═══════════════
 function updateStats(){
@@ -1166,7 +1156,7 @@ function switchTab(tab){
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
   });
   if(tab==='list')renderList();
-  if(tab==='map'&&map)google.maps.event.trigger(map,'resize');
+  if(tab==='map'&&map)setTimeout(()=>map.invalidateSize(),50);
 }
 
 // ═══════════════ TOAST ═══════════════
@@ -1179,13 +1169,7 @@ updateStats();
 </script>
 
 <script>
-(function(){
-  const p=new URLSearchParams(window.location.search);
-  const key=p.get('key')||'AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNDE';
-  const s=document.createElement('script');
-  s.src=`https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&language=vi&region=VN`;
-  s.async=true;s.defer=true;document.body.appendChild(s);
-})();
+window.addEventListener('load',initMap);
 </script>
 </body>
 </html>
