@@ -199,7 +199,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">Đèn Giao Thông Hỏng</div>
+    <div class="header-title">Đèn Giao Thông Hỏng <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.0</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right">
@@ -233,6 +233,19 @@ textarea{resize:none;min-height:60px}
     <div style="text-align:right">
       <div style="font-size:11px;color:var(--muted)">Góc nón phát hiện</div>
       <div style="font-size:13px;font-weight:700;color:var(--amber)">± 60°</div>
+    </div>
+  </div>
+
+  <!-- Weather bar -->
+  <div id="weatherBar" style="background:rgba(22,27,34,0.95);border-bottom:1px solid var(--border);padding:7px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;font-size:12px">
+    <div id="weatherIcon" style="font-size:20px">⏳</div>
+    <div style="flex:1">
+      <div id="weatherMain" style="font-weight:700;color:var(--text)">Đang tải thời tiết...</div>
+      <div id="weatherSub" style="color:var(--muted);font-size:11px;margin-top:1px"></div>
+    </div>
+    <div style="text-align:right">
+      <div id="weatherTemp" style="font-size:22px;font-weight:900;color:var(--amber)">--°</div>
+      <div style="font-size:10px;color:var(--muted)">Bạc Liêu</div>
     </div>
   </div>
 
@@ -595,6 +608,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
     // Auto-detect đèn giao thông
     autoDetectTrafficLight(myLat,myLng,kmh);
 
+    checkLoadWeather();
     if(driveMode)runHUD();
   },err=>{
     document.getElementById('gpsStatus').textContent='📍 Không có GPS — bật quyền vị trí';
@@ -1215,6 +1229,48 @@ function closeModal(id){document.getElementById(id).classList.remove('active');d
 
 function navTo(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,'_blank');}
 function viewMap(lat,lng){switchTab('map');if(map){map.setView([lat,lng],17);}}
+
+// ═══════════════ WEATHER ═══════════════
+const WMO_CODES = {
+  0:'☀️ Trời quang',1:'🌤 Ít mây',2:'⛅ Có mây',3:'☁️ Nhiều mây',
+  45:'🌫 Sương mù',48:'🌫 Sương giá',
+  51:'🌦 Mưa phùn nhẹ',53:'🌦 Mưa phùn',55:'🌧 Mưa phùn dày',
+  61:'🌧 Mưa nhẹ',63:'🌧 Mưa vừa',65:'🌧 Mưa to',
+  80:'🌦 Mưa rào nhẹ',81:'🌧 Mưa rào',82:'⛈ Mưa rào mạnh',
+  95:'⛈ Dông bão',96:'⛈ Dông có mưa đá',99:'⛈ Dông mưa đá lớn',
+};
+
+async function fetchWeather(lat,lng){
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&wind_speed_unit=kmh&timezone=Asia%2FBangkok`;
+    const res=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    const d=await res.json();
+    const c=d.current;
+    const code=c.weather_code;
+    const desc=WMO_CODES[code]||'🌡 Không rõ';
+    const icon=desc.split(' ')[0];
+    const text=desc.split(' ').slice(1).join(' ');
+    const temp=Math.round(c.temperature_2m);
+    const humid=c.relative_humidity_2m;
+    const wind=Math.round(c.wind_speed_10m);
+
+    document.getElementById('weatherIcon').textContent=icon;
+    document.getElementById('weatherMain').textContent=text;
+    document.getElementById('weatherSub').textContent=`💧 ${humid}% · 💨 ${wind} km/h`;
+    document.getElementById('weatherTemp').textContent=`${temp}°`;
+  }catch(e){
+    document.getElementById('weatherMain').textContent='Không lấy được thời tiết';
+  }
+}
+
+let weatherLoaded=false;
+function checkLoadWeather(){
+  if(!myLat||weatherLoaded)return;
+  weatherLoaded=true;
+  fetchWeather(myLat,myLng);
+  // Cập nhật mỗi 10 phút
+  setInterval(()=>fetchWeather(myLat,myLng),600000);
+}
 
 // ═══════════════ STATS ═══════════════
 function updateStats(){
