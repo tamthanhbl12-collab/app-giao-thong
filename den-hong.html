@@ -414,6 +414,7 @@ let points=JSON.parse(localStorage.getItem(SK)||'[]');
 // GPS state
 let myLat=null,myLng=null,mySpeed=0,myHeading=null;
 let driveMode=false;
+let gpsInitialized=false;
 let warnedIds=new Set(); // đã cảnh báo lần này
 let lastWarnTime=0;
 
@@ -571,8 +572,9 @@ function startGPS(){
     document.getElementById('gpsStatus').textContent=`📍 ${myLat.toFixed(4)}, ${myLng.toFixed(4)}`;
     document.getElementById('gpsDot').className='hud-gps-dot ok';
 
-    // Lần đầu có GPS → tự zoom về vị trí
-    if(!myMarker && map){
+    // Lần đầu có GPS → tự zoom về vị trí (chỉ 1 lần)
+    if(!gpsInitialized && map){
+      gpsInitialized=true;
       map.setView([myLat,myLng],16);
     }
 
@@ -923,11 +925,11 @@ function initMap(){
   // Zoom control góc trái dưới
   L.control.zoom({position:'bottomleft'}).addTo(map);
 
-  // Click bản đồ để chọn vị trí
+  // Click bản đồ: chỉ điền tọa độ, KHÔNG chuyển tab (tránh nhầm khi lái)
   map.on('click',function(e){
     document.getElementById('mLat').value=e.latlng.lat.toFixed(6);
     document.getElementById('mLng').value=e.latlng.lng.toFixed(6);
-    switchTab('add');showToast('📍 Đã chọn vị trí — điền thêm rồi lưu');
+    showToast('📍 Đã chọn vị trí — vào tab ➕ Thêm để lưu');
   });
 
   renderMarkers();startGPS();startHudTick();
