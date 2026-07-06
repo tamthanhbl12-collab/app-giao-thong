@@ -199,7 +199,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.4</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.5</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right">
@@ -1463,11 +1463,13 @@ function parseGoogleMapsLink(q){
   return null;
 }
 
-function setNavDest(lat,lng,name){
+async function setNavDest(lat,lng,name){
   navDest={lat,lng,name};
   document.getElementById('navDestName').textContent='📍 '+name;
   document.getElementById('navInfo').classList.add('show');
   document.getElementById('navDest').value='';
+
+  // Vẽ marker điểm đến
   if(map){
     if(navMarker)map.removeLayer(navMarker);
     navMarker=L.marker([lat,lng],{
@@ -1477,16 +1479,57 @@ function setNavDest(lat,lng,name){
         iconSize:[28,28],iconAnchor:[14,28]
       })
     }).addTo(map).bindPopup(name);
-    if(myLat){
-      if(navPolyline)map.removeLayer(navPolyline);
-      navPolyline=L.polyline([[myLat,myLng],[lat,lng]],{
-        color:'#58a6ff',weight:3,opacity:0.7,dashArray:'8,6'
-      }).addTo(map);
-      map.fitBounds([[myLat,myLng],[lat,lng]],{padding:[40,40]});
-    }
+  }
+
+  // Lấy route thật từ OSRM nếu có GPS
+  if(myLat&&map){
+    await fetchRoute(myLat,myLng,lat,lng);
   }
   updateNavInfo();
   showToast('✅ Đã đặt điểm đến!');
+}
+
+// OSRM routing — đường thật theo lộ trình
+async function fetchRoute(fromLat,fromLng,toLat,toLng){
+  try{
+    showToast('🗺️ Đang tính lộ trình...');
+    const url=`https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=true`;
+    const res=await fetch(url,{signal:AbortSignal.timeout(10000)});
+    const d=await res.json();
+    if(d.code!=='Ok'||!d.routes.length){
+      // Fallback: vẽ đường thẳng
+      drawStraightLine(fromLat,fromLng,toLat,toLng);
+      return;
+    }
+    const route=d.routes[0];
+    const coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
+
+    // Lưu thông tin route
+    navDest.routeDist=route.distance; // mét
+    navDest.routeDuration=route.duration; // giây
+    navDest.steps=route.legs[0].steps;
+
+    // Vẽ đường thật trên bản đồ
+    if(navPolyline)map.removeLayer(navPolyline);
+    navPolyline=L.polyline(coords,{
+      color:'#58a6ff',weight:4,opacity:0.85
+    }).addTo(map);
+    map.fitBounds(navPolyline.getBounds(),{padding:[40,40]});
+
+    const km=(route.distance/1000).toFixed(1);
+    const min=Math.round(route.duration/60);
+    showToast(`✅ Lộ trình: ${km}km · ${min} phút`);
+  }catch(e){
+    drawStraightLine(fromLat,fromLng,toLat,toLng);
+  }
+}
+
+function drawStraightLine(fromLat,fromLng,toLat,toLng){
+  if(navPolyline)map.removeLayer(navPolyline);
+  navPolyline=L.polyline([[fromLat,fromLng],[toLat,toLng]],{
+    color:'#58a6ff',weight:3,opacity:0.7,dashArray:'8,6'
+  }).addTo(map);
+  map.fitBounds([[fromLat,fromLng],[toLat,toLng]],{padding:[40,40]});
 }
 
 async function startNav(){
@@ -1525,13 +1568,26 @@ async function startNav(){
 
 function updateNavInfo(){
   if(!navDest||!myLat)return;
-  const d=dist(myLat,myLng,navDest.lat,navDest.lng);
-  const kmh=Math.max(mySpeed*3.6,5);
-  const etaMin=Math.round((d/1000)/(kmh/60));
-  const distKm=(d/1000).toFixed(1);
+  const dStraight=dist(myLat,myLng,navDest.lat,navDest.lng);
+  // Dùng route distance nếu có, nếu không dùng đường thẳng
+  const dMeters=navDest.routeDist||dStraight;
+  const kmh=Math.max(mySpeed*3.6,20);
+  const etaMin=Math.round((dMeters/1000)/(kmh/60));
+  const distKm=(dMeters/1000).toFixed(1);
 
   document.getElementById('navDist').textContent=distKm;
   document.getElementById('navETA').textContent=etaMin;
+
+  // Cập nhật route khi di chuyển (mỗi 500m)
+  if(navDest.lastRouteFrom){
+    const moved=dist(myLat,myLng,navDest.lastRouteFrom.lat,navDest.lastRouteFrom.lng);
+    if(moved>500){
+      navDest.lastRouteFrom={lat:myLat,lng:myLng};
+      fetchRoute(myLat,myLng,navDest.lat,navDest.lng);
+    }
+  } else {
+    navDest.lastRouteFrom={lat:myLat,lng:myLng};
+  }
 
   // Tính hướng so với điểm đến
   const bearToDest=bearing(myLat,myLng,navDest.lat,navDest.lng);
