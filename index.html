@@ -49,6 +49,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* NEAREST LIGHT DISPLAY */
 .hud-main{flex:0 0 auto;max-height:42%;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px}
 
+/* WEATHER BAR — hiện 3 phút mỗi 30 phút rồi tự ẩn */
+#weatherBar{transition:all .5s ease;max-height:60px;overflow:hidden}
+#weatherBar.wb-hidden{max-height:0!important;padding-top:0!important;padding-bottom:0!important;opacity:0!important;border-bottom-width:0!important}
+
 /* MINI MAP TRONG HUD */
 #hudMapWrap{flex:1;min-height:150px;position:relative;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 #hudMap{position:absolute;inset:0;z-index:0}
@@ -231,7 +235,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.5</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.6</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -2013,13 +2017,34 @@ async function fetchWeather(lat,lng){
   }
 }
 
+// Chu kỳ hiện/ẩn thời tiết: hiện 3 phút, ẩn, lặp lại mỗi 30 phút
+// → nhường không gian màn hình cho hành trình
 let weatherLoaded=false;
+const WEATHER_SHOW_MS=3*60*1000;
+const WEATHER_CYCLE_MS=30*60*1000;
+let weatherHideTimer=null;
+
+function showWeatherCycle(){
+  const bar=document.getElementById('weatherBar');
+  if(!bar)return;
+  if(myLat)fetchWeather(myLat,myLng); // làm mới dữ liệu trước khi hiện
+  bar.classList.remove('wb-hidden');
+  if(hudMap)setTimeout(()=>hudMap.invalidateSize(),550);
+  if(weatherHideTimer)clearTimeout(weatherHideTimer);
+  weatherHideTimer=setTimeout(hideWeatherBar,WEATHER_SHOW_MS);
+}
+function hideWeatherBar(){
+  const bar=document.getElementById('weatherBar');
+  if(!bar)return;
+  bar.classList.add('wb-hidden');
+  if(hudMap)setTimeout(()=>hudMap.invalidateSize(),550);
+}
+
 function checkLoadWeather(){
   if(!myLat||weatherLoaded)return;
   weatherLoaded=true;
-  fetchWeather(myLat,myLng);
-  // Cập nhật mỗi 10 phút
-  setInterval(()=>fetchWeather(myLat,myLng),600000);
+  showWeatherCycle(); // hiện ngay lần đầu có GPS
+  setInterval(showWeatherCycle,WEATHER_CYCLE_MS);
 }
 
 // ═══════════════ QUẢN LÝ XE ═══════════════
