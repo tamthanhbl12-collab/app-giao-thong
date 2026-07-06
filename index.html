@@ -278,9 +278,9 @@ textarea{resize:none;min-height:60px}
   </div>
   <!-- Navigation Panel -->
   <div class="nav-panel" id="navPanel">
-    <div class="nav-input-row">
-      <input type="text" class="nav-input" id="navDest" placeholder="🔍 Tên, tọa độ hoặc link Google Maps" onkeydown="if(event.key==='Enter')startNav()">
-      <button class="nav-go-btn" onclick="startNav()">Đi ▶</button>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input type="text" id="navDest" placeholder="🔍 Tên, tọa độ hoặc link Google Maps" onkeydown="if(event.key==='Enter')startNav()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:8px 12px;outline:none;font-family:inherit;min-width:0">
+      <button onclick="startNav()" style="padding:8px 14px;border-radius:10px;border:none;background:var(--blue);color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">Đi ▶</button>
     </div>
     <div class="nav-info" id="navInfo">
       <div class="nav-dest" id="navDestName">--</div>
