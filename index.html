@@ -199,11 +199,16 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.3</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.4</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
-  <div class="hdr-right">
+  <div class="hdr-right" style="gap:6px">
     <div class="hud-gps-dot" id="gpsDot"></div>
+    <!-- Icon cảnh báo đèn hỏng -->
+    <div id="alertIcon" onclick="showAlertDetail()" style="display:none;position:relative;cursor:pointer;width:36px;height:36px;background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.4);border-radius:50%;align-items:center;justify-content:center;font-size:18px;animation:pulse-btn 1.2s infinite">
+      🚦
+      <div id="alertBadge" style="position:absolute;top:-3px;right:-3px;background:var(--red);color:#fff;font-size:9px;font-weight:900;padding:1px 4px;border-radius:10px;min-width:16px;text-align:center">0</div>
+    </div>
     <button class="drive-btn" id="driveBtn" onclick="toggleDriveMode()">🚗 Lái xe</button>
   </div>
 </div>
@@ -263,19 +268,13 @@ textarea{resize:none;min-height:60px}
     </div>
   </div>
 
-  <!-- Main display -->
-  <div class="hud-main" id="hudMain">
-    <div class="hud-no-light">
-      <div class="nl-icon">✅</div>
-      <div class="nl-text">Không có đèn hỏng phía trước</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">App đang theo dõi trong hình nón 60° trước mặt</div>
+  <!-- Main display — chỉ đường -->
+  <div class="hud-main" id="hudMain" style="justify-content:center;padding:10px 14px">
+    <div class="hud-no-light" id="hudNoNav">
+      <div class="nl-icon">🗺️</div>
+      <div class="nl-text">Nhập điểm đến để bắt đầu</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Paste link Google Maps hoặc tọa độ</div>
     </div>
-  </div>
-
-  <!-- Other lights bottom -->
-  <div class="hud-others" id="hudOthers" style="display:none">
-    <div class="hud-others-title">⚠️ Đèn hỏng xung quanh (ngoài hướng đi)</div>
-    <div class="hud-others-list" id="hudOthersList"></div>
   </div>
   <!-- Navigation Panel -->
   <div class="nav-panel" id="navPanel">
@@ -448,6 +447,15 @@ textarea{resize:none;min-height:60px}
   <div class="stat-item"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Tổng điểm</div></div>
   <div class="stat-item"><div class="stat-num" id="statNearby" style="color:var(--red)">0</div><div class="stat-label">Phía trước</div></div>
   <div class="stat-item"><div class="stat-num" id="statToday">0</div><div class="stat-label">Hôm nay</div></div>
+</div>
+
+<!-- ALERT DETAIL POPUP -->
+<div id="alertDetailPopup" style="display:none;position:fixed;top:70px;right:10px;z-index:9999;background:var(--surface);border:1px solid rgba(248,81,73,.4);border-radius:14px;padding:14px;min-width:220px;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:700;color:var(--red)">🚦 Đèn hỏng phía trước</div>
+    <button onclick="document.getElementById('alertDetailPopup').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer">✕</button>
+  </div>
+  <div id="alertDetailList" style="display:flex;flex-direction:column;gap:8px"></div>
 </div>
 
 <!-- MODAL XÓA -->
@@ -849,146 +857,108 @@ function confirmAutoPoint(save){
 // ═══════════════ HUD ENGINE ═══════════════
 function runHUD(){
   if(!myLat)return;
-
-  // Phân loại đèn: phía trước vs xung quanh
-  const CONE=60; // ±60° từ hướng đi
-  const MAX_DIST=2000; // chỉ xét trong 2km
-
+  const CONE=60,MAX_DIST=2000;
   const ahead=[],others=[];
 
   points.forEach(p=>{
     const d=dist(myLat,myLng,p.lat,p.lng);
     if(d>MAX_DIST)return;
     const bear=bearing(myLat,myLng,p.lat,p.lng);
-    const inCone=myHeading!==null?angleDiff(myHeading,bear)<CONE:true; // nếu chưa có heading thì xét tất cả
-    if(inCone) ahead.push({...p,_dist:d,_bear:bear});
+    const inCone=myHeading!==null?angleDiff(myHeading,bear)<CONE:true;
+    if(inCone)ahead.push({...p,_dist:d,_bear:bear});
     else others.push({...p,_dist:d,_bear:bear});
   });
-
   ahead.sort((a,b)=>a._dist-b._dist);
-  others.sort((a,b)=>a._dist-b._dist);
-
-  // Cập nhật stat "Phía trước"
   document.getElementById('statNearby').textContent=ahead.length;
 
-  renderHUD(ahead,others);
-}
+  // Cập nhật icon cảnh báo trên topbar
+  updateAlertIcon(ahead);
 
-function renderHUD(ahead,others){
-  const mainEl=document.getElementById('hudMain');
-  const othersEl=document.getElementById('hudOthers');
-  const othersListEl=document.getElementById('hudOthersList');
-
-  // ── Phần chính: đèn gần nhất phía trước ──
-  if(ahead.length===0){
-    mainEl.innerHTML=`<div class="hud-no-light">
-      <div class="nl-icon">✅</div>
-      <div class="nl-text">Không có đèn hỏng phía trước</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">Đang theo dõi ${points.length} điểm trong CSDL</div>
-    </div>`;
-  } else {
-    const p=ahead[0];
-    const d=p._dist;
-    const speedMs=mySpeed||10/3.6; // nếu chưa có speed, giả sử 10km/h
-    const etaSec=d/speedMs; // giây nữa tới đèn
-
-    // Pha hiện tại của đèn
-    const curPhase=getCurrentPhase(p);
-    // Pha khi anh tới nơi
-    const futurePhase=p.cycleAnchor?getPhaseAtFuture(p,etaSec):null;
-
-    const phaseColor={green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)'};
-    const phaseLabel={green:'🟢 Đang XANH',yellow:'🟡 Đang VÀNG',red:'🔴 Đang ĐỎ'};
-    const phaseLabelShort={green:'Xanh',yellow:'Vàng',red:'Đỏ'};
-
-    // Cảnh báo âm thanh
+  // Cảnh báo âm thanh khi đèn gần
+  if(driveMode&&ahead.length>0){
+    const cl=ahead[0];
     const now=Date.now();
-    if(driveMode&&d<500&&!warnedIds.has(p.id)&&(now-lastWarnTime)>8000){
-      warnedIds.add(p.id);
-      lastWarnTime=now;
+    if(cl._dist<500&&!warnedIds.has(cl.id)&&(now-lastWarnTime)>8000){
+      warnedIds.add(cl.id);lastWarnTime=now;
       warnBeep();
+      const phaseName={green:'xanh',yellow:'vàng',red:'đỏ'};
+      const cur=getCurrentPhase(cl);
+      const speedMs=mySpeed||10/3.6;
+      const etaSec=cl._dist/speedMs;
+      const futurePhase=cl.cycleAnchor?getPhaseAtFuture(cl,etaSec):null;
       if(futurePhase){
-        const msg=`Đèn hỏng phía trước ${Math.round(d)} mét. Khi tới nơi đèn đang ${phaseLabelShort[futurePhase.phase]}.`;
+        const msg=`Đèn hỏng ${Math.round(cl._dist)} mét. Khi tới: đèn ${phaseName[futurePhase.phase]} còn ${futurePhase.remaining} giây`;
         setTimeout(()=>speak(msg),400);
       } else {
-        setTimeout(()=>speak(`Đèn hỏng phía trước ${Math.round(d)} mét, chú ý quan sát.`),400);
+        setTimeout(()=>speak(`Đèn hỏng phía trước ${Math.round(cl._dist)} mét. Chú ý quan sát.`),400);
       }
     }
-
-    // Reset warn nếu đã qua
-    if(d>600)warnedIds.delete(p.id);
-
-    // Màu glow theo pha hiện tại
-    const glowColor=curPhase?phaseColor[curPhase.phase]:'var(--red)';
-
-    // Arrival prediction text
-    let arrivalHtml='';
-    if(futurePhase){
-      const fc=phaseColor[futurePhase.phase];
-      const fl=phaseLabel[futurePhase.phase];
-      arrivalHtml=`<div class="hlc-arrival-warn show" style="background:${fc}20;border:1px solid ${fc}50;color:${fc}">
-        Khi đến nơi: ${fl} còn ${futurePhase.remaining}s
-      </div>`;
-    }
-
-    // ETA text
-    const etaMin=Math.floor(etaSec/60);
-    const etaS=Math.round(etaSec%60);
-    const etaText=etaMin>0?`~${etaMin} phút ${etaS}s`:`~${Math.round(etaSec)} giây`;
-    const distText=d<1000?`${Math.round(d)}m`:`${(d/1000).toFixed(1)}km`;
-
-    // Current phase display
-    let phaseHtml='';
-    if(curPhase){
-      const pct=Math.max(0,Math.min(100,(1-curPhase.remaining/curPhase.phaseDur)*100));
-      const c=phaseColor[curPhase.phase];
-      phaseHtml=`
-        <div class="hlc-phase-label" style="color:${c}">${phaseLabel[curPhase.phase]}</div>
-        <div class="hlc-phase-timer" style="color:${c}">${curPhase.remaining}<span style="font-size:18px;font-weight:400">s</span></div>
-        <div class="hlc-phase-bar-wrap"><div class="hlc-phase-bar" id="hudPhaseBar" style="width:${pct}%;background:${c}"></div></div>`;
-    } else {
-      phaseHtml=`<div style="color:var(--muted);font-size:13px;margin-top:6px">⚠️ Chưa có dữ liệu chu kỳ đèn<br><span style="font-size:11px">Bấm ⏱️ trong danh sách để cập nhật</span></div>`;
-    }
-
-    mainEl.innerHTML=`<div class="hud-light-card">
-      <div class="hlc-glow" style="background:${glowColor}"></div>
-      <div class="hlc-top">
-        <div class="hlc-traffic-light">
-          <div class="hlc-bulb bulb-r ${curPhase&&curPhase.phase==='red'?'on':''}"></div>
-          <div class="hlc-bulb bulb-y ${curPhase&&curPhase.phase==='yellow'?'on':''}"></div>
-          <div class="hlc-bulb bulb-g ${curPhase&&curPhase.phase==='green'?'on':''}"></div>
-        </div>
-        <div class="hlc-info">
-          <div class="hlc-name">${p.name}</div>
-          <div class="hlc-addr">${p.addr||p.type||'Đèn hỏng'}</div>
-          ${phaseHtml}
-        </div>
-      </div>
-      <div class="hlc-eta">
-        <div class="hlc-eta-icon">🚗</div>
-        <div class="hlc-eta-body">
-          <div class="hlc-eta-dist">${distText} phía trước</div>
-          <div class="hlc-eta-time">Tốc độ hiện tại: ${Math.round(mySpeed*3.6)} km/h → tới nơi ${etaText}</div>
-        </div>
-        <div class="hlc-eta-prediction" style="color:var(--amber)">${Math.round(etaSec)}s</div>
-      </div>
-      ${arrivalHtml}
-      ${ahead.length>1?`<div style="margin-top:8px;font-size:11px;color:var(--muted)">+ ${ahead.length-1} đèn hỏng phía trước khác</div>`:''}
-    </div>`;
+    if(cl._dist>600)warnedIds.delete(cl.id);
   }
+}
 
-  // ── Phần dưới: đèn xung quanh (ngoài hướng đi) ──
-  if(others.length>0){
-    othersEl.style.display='block';
-    othersListEl.innerHTML=others.slice(0,5).map(p=>{
+function updateAlertIcon(ahead){
+  const icon=document.getElementById('alertIcon');
+  const badge=document.getElementById('alertBadge');
+  if(!icon||!badge)return;
+
+  const near=ahead.filter(p=>p._dist<500);
+  if(near.length>0){
+    icon.style.display='flex';
+    badge.textContent=near.length;
+    // Màu theo khoảng cách
+    const closest=near[0];
+    const urgency=closest._dist<200?'rgba(248,81,73,1)':'rgba(248,81,73,.7)';
+    icon.style.background=`rgba(248,81,73,.2)`;
+    icon.style.borderColor=urgency;
+  } else if(ahead.length>0){
+    // Có đèn nhưng còn xa (500m-2km) → icon xanh nhạt
+    icon.style.display='flex';
+    badge.textContent=ahead.length;
+    icon.style.background='rgba(240,136,62,.15)';
+    icon.style.borderColor='rgba(240,136,62,.5)';
+    icon.style.animation='none';
+  } else {
+    // Không có đèn phía trước → ẩn icon
+    icon.style.display='none';
+  }
+}
+
+function showAlertDetail(){
+  const popup=document.getElementById('alertDetailPopup');
+  const list=document.getElementById('alertDetailList');
+  if(!myLat||!popup||!list)return;
+
+  const CONE=60,MAX_DIST=2000;
+  const ahead=points.filter(p=>{
+    const d=dist(myLat,myLng,p.lat,p.lng);
+    if(d>MAX_DIST)return false;
+    const bear=bearing(myLat,myLng,p.lat,p.lng);
+    return myHeading!==null?angleDiff(myHeading,bear)<CONE:true;
+  }).map(p=>({...p,_dist:dist(myLat,myLng,p.lat,p.lng)}))
+    .sort((a,b)=>a._dist-b._dist);
+
+  if(!ahead.length){
+    list.innerHTML='<div style="color:var(--muted);font-size:12px">Không có đèn hỏng phía trước</div>';
+  } else {
+    list.innerHTML=ahead.map(p=>{
       const d=p._dist<1000?`${Math.round(p._dist)}m`:`${(p._dist/1000).toFixed(1)}km`;
-      return`<div class="hud-other-chip" onclick="viewMap(${p.lat},${p.lng})">
-        <div class="hud-oc-name">🚦 ${p.name}</div>
-        <div class="hud-oc-dist">📍 ${d}</div>
+      const cur=getCurrentPhase(p);
+      const phaseHtml=cur?`<span style="font-size:11px;color:${cur.phase==='green'?'var(--green)':cur.phase==='yellow'?'#f5c518':'var(--red)'}">${cur.remaining}s</span>`:'';
+      return`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px">
+        <div style="font-size:20px">🚦</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+          <div style="font-size:11px;color:var(--muted)">${d} phía trước ${phaseHtml}</div>
+        </div>
+        <button onclick="viewMap(${p.lat},${p.lng})" style="padding:4px 8px;border-radius:6px;border:none;background:var(--blue);color:#000;font-size:11px;font-weight:700;cursor:pointer">🗺️</button>
       </div>`;
     }).join('');
-  } else othersEl.style.display='none';
+  }
+  popup.style.display=popup.style.display==='none'?'block':'none';
 }
+
+
 
 // HUD auto-refresh mỗi giây
 function startHudTick(){
