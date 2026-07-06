@@ -47,7 +47,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .hud-gps-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
 
 /* NEAREST LIGHT DISPLAY */
-.hud-main{flex:0 0 auto;max-height:42%;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px}
+.hud-main{flex:0 0 auto;max-height:42%;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 14px;gap:12px}
+.hud-main:empty{display:none}
 
 /* WEATHER BAR — hiện 3 phút mỗi 30 phút rồi tự ẩn */
 #weatherBar{transition:all .5s ease;max-height:60px;overflow:hidden}
@@ -60,8 +61,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudFollowBtn.off{background:var(--surface);color:var(--muted)}
 
 /* NAV PANEL — điều hướng trong HUD */
-.nav-panel{flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px}
-.nav-info{display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-top:2px}
+.nav-panel{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px}
+.nav-info{display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-top:8px}
 .nav-info.show{display:block}
 .nav-dest{font-size:12px;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-stats{display:flex;align-items:center;gap:10px}
@@ -235,7 +236,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.6</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.7</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -304,23 +305,10 @@ textarea{resize:none;min-height:60px}
     </div>
   </div>
 
-  <!-- Main display — chỉ đường -->
-  <div class="hud-main" id="hudMain" style="justify-content:center;padding:10px 14px">
-    <div class="hud-no-light" id="hudNoNav">
-      <div class="nl-icon">🗺️</div>
-      <div class="nl-text">Nhập điểm đến để bắt đầu</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">Paste link Google Maps hoặc tọa độ</div>
-    </div>
-  </div>
-  <!-- Mini map trong HUD -->
-  <div id="hudMapWrap">
-    <div id="hudMap"></div>
-    <button id="hudFollowBtn" onclick="hudCenterMe()" title="Bám theo vị trí">🎯</button>
-  </div>
-  <!-- Navigation Panel -->
+  <!-- Navigation Panel — ô nhập điểm đến ở TRÊN cho dễ thấy -->
   <div class="nav-panel" id="navPanel">
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <input type="text" id="navDest" placeholder="🔍 Tên, tọa độ hoặc link Google Maps" onkeydown="if(event.key==='Enter')startNav()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:8px 12px;outline:none;font-family:inherit;min-width:0">
+    <div style="display:flex;gap:8px">
+      <input type="text" id="navDest" placeholder="🔍 Nhập điểm đến: tên, tọa độ, link Google Maps" onkeydown="if(event.key==='Enter')startNav()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:8px 12px;outline:none;font-family:inherit;min-width:0">
       <button onclick="startNav()" style="padding:8px 14px;border-radius:10px;border:none;background:var(--blue);color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">Đi ▶</button>
     </div>
     <div class="nav-info" id="navInfo">
@@ -333,6 +321,13 @@ textarea{resize:none;min-height:60px}
         <button class="nav-cancel" onclick="cancelNav()">✕ Hủy</button>
       </div>
     </div>
+  </div>
+  <!-- Main display — thẻ đèn khi lái xe -->
+  <div class="hud-main" id="hudMain"></div>
+  <!-- Mini map trong HUD -->
+  <div id="hudMapWrap">
+    <div id="hudMap"></div>
+    <button id="hudFollowBtn" onclick="hudCenterMe()" title="Bám theo vị trí">🎯</button>
   </div>
   <!-- Rain Forecast Bar -->
   <div class="rain-bar" id="rainBar">
@@ -681,6 +676,9 @@ function toggleDriveMode(){
     switchTab('hud');
   } else {
     showToast('⏹ Đã tắt chế độ lái xe');
+    // Dọn thẻ đèn để nhường chỗ cho bản đồ
+    document.getElementById('hudMain').innerHTML='';
+    if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
   }
 }
 
@@ -1596,9 +1594,6 @@ function parseGoogleMapsLink(q){
 
 async function setNavDest(lat,lng,name){
   navDest={lat,lng,name};
-  // Ẩn placeholder để nhường chỗ cho bản đồ
-  const nn=document.getElementById('hudNoNav');
-  if(nn)nn.style.display='none';
   if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
   document.getElementById('navDestName').textContent='📍 '+name;
   document.getElementById('navInfo').classList.add('show');
@@ -1835,8 +1830,6 @@ function cancelNav(){
     if(navPolyline){map.removeLayer(navPolyline);navPolyline=null;}
   }
   hudMapClearNav();
-  const nn=document.getElementById('hudNoNav');
-  if(nn)nn.style.display='';
   if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
   showToast('🛑 Đã hủy điều hướng');
 }
