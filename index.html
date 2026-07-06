@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Đèn Giao Thông Hỏng</title>
+<title>MapGo</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -199,7 +199,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">Đèn Giao Thông Hỏng <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.2</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.3</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right">
@@ -275,6 +275,23 @@ textarea{resize:none;min-height:60px}
   <div class="hud-others" id="hudOthers" style="display:none">
     <div class="hud-others-title">⚠️ Đèn hỏng xung quanh (ngoài hướng đi)</div>
     <div class="hud-others-list" id="hudOthersList"></div>
+  </div>
+  <!-- Navigation Panel -->
+  <div class="nav-panel" id="navPanel">
+    <div class="nav-input-row">
+      <input type="text" class="nav-input" id="navDest" placeholder="🔍 Nhập điểm đến..." onkeydown="if(event.key==='Enter')startNav()">
+      <button class="nav-go-btn" onclick="startNav()">Đi ▶</button>
+    </div>
+    <div class="nav-info" id="navInfo">
+      <div class="nav-dest" id="navDestName">--</div>
+      <div class="nav-stats">
+        <div class="nav-arrow" id="navArrow">⬆️</div>
+        <div class="nav-direction" id="navDirectionText">Đi thẳng</div>
+        <div class="nav-stat"><div class="nav-stat-val" id="navDist">--</div><div class="nav-stat-lbl">km</div></div>
+        <div class="nav-stat"><div class="nav-stat-val" id="navETA">--</div><div class="nav-stat-lbl">phút</div></div>
+        <button class="nav-cancel" onclick="cancelNav()">✕ Hủy</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -622,9 +639,9 @@ if(document.getElementById('panel-map').classList.contains('active')){
     autoDetectTrafficLight(myLat,myLng,kmh);
 
     checkLoadWeather();
-    // Kiểm tra tốc độ giới hạn
     if(kmh>5)queryRoadSpeed(myLat,myLng);
     checkSpeedLimit(kmh);
+    updateNavInfo();
     if(driveMode)runHUD();
   },err=>{
     document.getElementById('gpsStatus').textContent='📍 Không có GPS — bật quyền vị trí';
@@ -1414,6 +1431,112 @@ function editCurrentRoadLimit(){
   document.getElementById('speedLimitSign').textContent=v;
   document.getElementById('speedLimitSub').textContent=`Tùy chỉnh: ${v} km/h`;
   showToast(`✅ Đã lưu giới hạn ${v} km/h cho đường này`);
+}
+
+// ═══════════════ NAVIGATION ═══════════════
+let navDest=null; // {lat,lng,name}
+let navMarker=null;
+let navPolyline=null;
+
+async function startNav(){
+  const q=document.getElementById('navDest').value.trim();
+  if(!q){showToast('⚠️ Nhập điểm đến');return;}
+
+  // Geocode bằng Nominatim (OSM, miễn phí)
+  showToast('🔍 Đang tìm địa điểm...');
+  try{
+    const biasLat=myLat||9.2845, biasLng=myLng||105.7243;
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=vn&viewbox=${biasLng-0.5},${biasLat+0.5},${biasLng+0.5},${biasLat-0.5}&bounded=0`;
+    const res=await fetch(url,{headers:{'Accept-Language':'vi'},signal:AbortSignal.timeout(8000)});
+    const data=await res.json();
+    if(!data.length){showToast('❌ Không tìm thấy địa điểm');return;}
+
+    const place=data[0];
+    navDest={lat:parseFloat(place.lat),lng:parseFloat(place.lon),name:place.display_name.split(',').slice(0,2).join(', ')};
+
+    document.getElementById('navDestName').textContent='📍 '+navDest.name;
+    document.getElementById('navInfo').classList.add('show');
+    document.getElementById('navDest').value='';
+
+    // Vẽ marker điểm đến trên bản đồ
+    if(map){
+      if(navMarker)map.removeLayer(navMarker);
+      navMarker=L.marker([navDest.lat,navDest.lng],{
+        icon:L.divIcon({
+          className:'',
+          html:'<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))">📍</div>',
+          iconSize:[28,28],iconAnchor:[14,28]
+        })
+      }).addTo(map).bindPopup(navDest.name);
+
+      // Vẽ đường thẳng tạm (nếu có GPS)
+      if(myLat){
+        if(navPolyline)map.removeLayer(navPolyline);
+        navPolyline=L.polyline([[myLat,myLng],[navDest.lat,navDest.lng]],{
+          color:'#58a6ff',weight:3,opacity:0.7,dashArray:'8,6'
+        }).addTo(map);
+        map.fitBounds([[myLat,myLng],[navDest.lat,navDest.lng]],{padding:[40,40]});
+      }
+    }
+    updateNavInfo();
+    showToast('✅ Đã đặt điểm đến!');
+  }catch(e){showToast('❌ Lỗi tìm kiếm — kiểm tra mạng');}
+}
+
+function updateNavInfo(){
+  if(!navDest||!myLat)return;
+  const d=dist(myLat,myLng,navDest.lat,navDest.lng);
+  const kmh=Math.max(mySpeed*3.6,5);
+  const etaMin=Math.round((d/1000)/(kmh/60));
+  const distKm=(d/1000).toFixed(1);
+
+  document.getElementById('navDist').textContent=distKm;
+  document.getElementById('navETA').textContent=etaMin;
+
+  // Tính hướng so với điểm đến
+  const bearToDest=bearing(myLat,myLng,navDest.lat,navDest.lng);
+  const diff=myHeading!==null?((bearToDest-myHeading+360)%360):0;
+
+  let arrow='⬆️',dir='Đi thẳng';
+  if(myHeading!==null){
+    if(diff<22.5||diff>337.5){arrow='⬆️';dir='Đi thẳng';}
+    else if(diff<67.5){arrow='↗️';dir='Chéo phải';}
+    else if(diff<112.5){arrow='➡️';dir='Rẽ phải';}
+    else if(diff<157.5){arrow='↘️';dir='Chéo phải sau';}
+    else if(diff<202.5){arrow='⬇️';dir='Quay đầu';}
+    else if(diff<247.5){arrow='↙️';dir='Chéo trái sau';}
+    else if(diff<292.5){arrow='⬅️';dir='Rẽ trái';}
+    else{arrow='↖️';dir='Chéo trái';}
+  }
+  document.getElementById('navArrow').textContent=arrow;
+  document.getElementById('navDirectionText').textContent=dir;
+
+  // Cập nhật polyline
+  if(navPolyline&&map)navPolyline.setLatLngs([[myLat,myLng],[navDest.lat,navDest.lng]]);
+
+  // TTS khi gần tới nơi
+  if(d<200&&d>50){
+    const now=Date.now();
+    if(now-lastWarnTime>15000){
+      lastWarnTime=now;
+      speak(`Sắp đến nơi. Còn ${Math.round(d)} mét`);
+    }
+  }
+  if(d<30){
+    speak('Đã đến điểm đến');
+    cancelNav();
+  }
+}
+
+function cancelNav(){
+  navDest=null;
+  document.getElementById('navInfo').classList.remove('show');
+  document.getElementById('navDest').value='';
+  if(map){
+    if(navMarker){map.removeLayer(navMarker);navMarker=null;}
+    if(navPolyline){map.removeLayer(navPolyline);navPolyline=null;}
+  }
+  showToast('🛑 Đã hủy điều hướng');
 }
 
 // ═══════════════ WEATHER ═══════════════
