@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="🚀 Deploy Tool">
+<title>🚀 Deploy Tool</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0a0f; color: #e8e8f0; min-height: 100vh; padding-bottom: env(safe-area-inset-bottom); }
+  .header { background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 20px 16px 16px; text-align: center; border-bottom: 1px solid #ffffff15; }
+  .header h1 { font-size: 22px; font-weight: 800; color: #fff; }
+  .header p { font-size: 12px; color: #8888aa; margin-top: 4px; }
+  .section { margin: 12px; background: #12121e; border-radius: 16px; border: 1px solid #ffffff10; overflow: hidden; }
+  .section-title { padding: 12px 16px; font-size: 11px; font-weight: 700; color: #6666aa; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #ffffff08; }
+  .field { padding: 12px 16px; border-bottom: 1px solid #ffffff08; }
+  .field:last-child { border-bottom: none; }
+  .field label { font-size: 11px; color: #8888aa; font-weight: 600; display: block; margin-bottom: 6px; }
+  .field input, .field select, .field textarea {
+    width: 100%; background: #1e1e30; border: 1px solid #ffffff15; border-radius: 10px;
+    color: #e8e8f0; font-size: 14px; padding: 10px 12px; outline: none; -webkit-appearance: none;
+  }
+  .field input:focus, .field textarea:focus { border-color: #4444ff55; background: #22223a; }
+  .field textarea { height: 100px; resize: none; font-family: monospace; font-size: 12px; }
+  /* App selector */
+  .app-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px 16px; }
+  .app-btn {
+    padding: 10px 6px; border-radius: 12px; border: 2px solid #ffffff15;
+    background: #1e1e30; color: #aaa; font-size: 11px; font-weight: 700;
+    text-align: center; cursor: pointer; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+    line-height: 1.4;
+  }
+  .app-btn.active { border-color: #4466ff; background: #1a2050; color: #6699ff; }
+  .app-btn .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+  .status-box { margin: 0 12px; background: #0d1117; border-radius: 16px; border: 1px solid #ffffff10; padding: 14px 16px; font-family: monospace; font-size: 12px; min-height: 60px; max-height: 200px; overflow-y: auto; color: #44ff88; display: none; }
+  .status-box.show { display: block; }
+  .status-line { padding: 2px 0; line-height: 1.6; }
+  .status-line.err { color: #ff4455; }
+  .status-line.info { color: #8888cc; }
+  .status-line.warn { color: #ffaa33; }
+  .btn-deploy { margin: 12px; width: calc(100% - 24px); padding: 16px; border: none; border-radius: 16px; font-size: 17px; font-weight: 800; cursor: pointer; background: linear-gradient(135deg, #2233ff, #6644ff); color: #fff; box-shadow: 0 8px 24px #2233ff44; -webkit-tap-highlight-color: transparent; }
+  .btn-deploy:disabled { background: #333; box-shadow: none; color: #666; }
+  .progress { margin: 0 12px 8px; height: 4px; background: #1e1e30; border-radius: 4px; overflow: hidden; display: none; }
+  .progress.show { display: block; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, #2233ff, #44aaff); border-radius: 4px; width: 0%; transition: width 0.5s ease; }
+  .success-banner { margin: 0 12px 12px; background: #0d2a1a; border: 1px solid #44ff8833; border-radius: 16px; padding: 16px; display: none; text-align: center; }
+  .success-banner.show { display: block; }
+  .success-banner h3 { color: #44ff88; font-size: 16px; margin-bottom: 8px; }
+  .btn-open { display: block; margin-top: 10px; padding: 12px; background: #2233ff; border-radius: 12px; color: #fff; font-weight: 700; font-size: 14px; text-decoration: none; text-align: center; }
+  .info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 16px; font-size: 11px; color: #6666aa; }
+  .toggle-pw { background: none; border: none; color: #6666aa; font-size: 14px; cursor: pointer; padding: 0 4px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row input { flex: 1; }
+  .size-badge { font-size: 10px; color: #6666aa; text-align: right; padding: 0 16px 8px; }
+  .btn-paste { width: calc(100% - 32px); margin: 0 16px 10px; padding: 14px; border: 2px dashed #4466ff55; border-radius: 12px; background: #1a2050; color: #6699ff; font-size: 14px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
+  .btn-paste:active { background: #2a3070; transform: scale(0.98); }
+  .btn-clear { width: calc(100% - 32px); margin: 0 16px 10px; padding: 10px; border: 1px solid #ffffff15; border-radius: 10px; background: #1e1e30; color: #aaa; font-size: 12px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .btn-clear:active { background: #2a2a40; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🚀 Deploy Tool</h1>
+  <p>Chọn app → Paste code → Deploy!</p>
+</div>
+
+<!-- CHỌN APP -->
+
+<div class="section">
+  <div class="section-title">📱 Chọn App để Deploy</div>
+  <div class="app-grid">
+    <div class="app-btn active" id="app-banhang" onclick="selectApp('banhang')">
+      <span class="icon">🌾</span>Lúa Gạo & TACN
+    </div>
+    <div class="app-btn" id="app-banggia" onclick="selectApp('banggia')">
+      <span class="icon">📋</span>Bảng Giá
+    </div>
+    <div class="app-btn" id="app-thue" onclick="selectApp('thue')">
+      <span class="icon">💰</span>Tool Thuế
+    </div>
+    <div class="app-btn" id="app-dathang" onclick="selectApp('dathang')">
+      <span class="icon">📦</span>Đặt Hàng
+    </div>
+    <div class="app-btn" id="app-chonnuoi" onclick="selectApp('chonnuoi')">
+      <span class="icon">🐷</span>Kho Chăn Nuôi
+    </div>
+    <div class="app-btn" id="app-giaothong" onclick="selectApp('giaothong')">
+      <span class="icon">🚦</span>App Giao Thông
+    </div>
+  </div>
+  <div class="info-row">
+    <span>Repo: <strong id="info-repo" style="color:#aaa;">banhang</strong></span>
+    <span>File: <strong id="info-file" style="color:#aaa;">nongsan.html</strong></span>
+  </div>
+</div>
+
+<!-- TOKEN -->
+
+<div class="section">
+  <div class="section-title">🔑 GitHub Token <span id="token-saved" style="font-size:10px;color:#44ff88;display:none;">✓ Đã lưu</span></div>
+  <div class="field">
+    <label>TOKEN (nhập 1 lần, tự lưu)</label>
+    <div class="row">
+      <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" oninput="autoSaveToken()">
+      <button class="toggle-pw" onclick="togglePw()">👁</button>
+    </div>
+  </div>
+</div>
+
+<!-- PASTE CODE -->
+
+<div class="section">
+  <div class="section-title">📋 Paste Code HTML</div>
+  <div class="field" style="padding-bottom:4px;">
+    <label>1. Vào Claude → bấm Copy trên file HTML<br>2. Quay lại đây → bấm nút "Dán từ Clipboard" bên dưới</label>
+    <textarea id="html-code" placeholder="Code HTML sẽ hiện ở đây sau khi dán..." oninput="updateSize()"></textarea>
+  </div>
+  <div class="size-badge" id="file-size"></div>
+</div>
+
+<button class="btn-paste" onclick="pasteFromClipboard()">📋 Dán từ Clipboard</button>
+<button class="btn-clear" onclick="clearCode()" id="btn-clear" style="display:none">🗑️ Xóa code</button>
+
+<!-- DEPLOY -->
+
+<button class="btn-deploy" id="btn-deploy" onclick="deploy()">🚀 Deploy lên GitHub</button>
+
+<div class="progress" id="progress"><div class="progress-bar" id="progress-bar"></div></div>
+<div class="status-box" id="log"></div>
+
+<div class="success-banner" id="success-banner">
+  <h3>✅ Deploy thành công!</h3>
+  <p style="color:#8888aa;font-size:12px;margin-bottom:8px;" id="success-note"></p>
+  <a id="btn-open-app" class="btn-open" href="#" target="_blank">🔗 Mở App</a>
+</div>
+
+<div style="height:32px"></div>
+
+<script>
+// Cấu hình các app
+var APPS = {
+  banhang: {
+    label: 'Lúa Gạo & TACN',
+    user: 'tamthanhbl12-collab',
+    repo: 'banhang',
+    file: 'nongsan.html',
+    branch: 'main',
+    url: 'https://banhang.tamthanhbl12.workers.dev/nongsan'
+  },
+  banggia: {
+    label: 'Bảng Giá',
+    user: 'tamthanhbl12-collab',
+    repo: 'banhang',
+    file: 'banggia.html',
+    branch: 'main',
+    url: 'https://banhang.tamthanhbl12.workers.dev/banggia'
+  },
+  thue: {
+    label: 'Tool Thuế',
+    user: 'tamthanhbl12-collab',
+    repo: 'ToolSupportTax',
+    file: 'index.html',
+    branch: 'main',
+    url: 'https://tamthanhbl12-collab.github.io/ToolSupportTax/'
+  },
+  dathang: {
+    label: 'Đặt Hàng',
+    user: 'tamthanhbl12-collab',
+    repo: 'ToolSupport_Trung',
+    file: 'index.html',
+    branch: 'main',
+    url: 'https://tamthanhbl12-collab.github.io/ToolSupport_Trung/'
+  },
+  chonnuoi: {
+    label: 'Kho Chăn Nuôi',
+    user: 'tamthanhbl12-collab',
+    repo: 'Toolyoutube',
+    file: 'index.html',
+    branch: 'main',
+    url: 'https://tamthanhbl12-collab.github.io/Toolyoutube/'
+  },
+  giaothong: {
+    label: 'App Giao Thông',
+    user: 'tamthanhbl12-collab',
+    repo: 'app-giao-thong',
+    file: 'index.html',
+    branch: 'main',
+    url: 'https://tamthanhbl12-collab.github.io/app-giao-thong/'
+  }
+};
+
+var currentApp = 'banhang';
+
+window.onload = function() {
+  // Load token
+  var token = localStorage.getItem('deploy_token');
+  if(token) {
+    document.getElementById('gh-token').value = token;
+    document.getElementById('token-saved').style.display = 'inline';
+  }
+  // Load last app
+  var lastApp = localStorage.getItem('deploy_last_app');
+  if(lastApp && APPS[lastApp]) selectApp(lastApp);
+  else selectApp('banhang');
+};
+
+function selectApp(key) {
+  currentApp = key;
+  localStorage.setItem('deploy_last_app', key);
+  // Update buttons
+  Object.keys(APPS).forEach(function(k) {
+    document.getElementById('app-'+k).classList.toggle('active', k===key);
+  });
+  // Update info
+  var app = APPS[key];
+  document.getElementById('info-repo').textContent = app.repo;
+  document.getElementById('info-file').textContent = app.file;
+  // Reset success
+  document.getElementById('success-banner').classList.remove('show');
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('log').classList.remove('show');
+}
+
+function autoSaveToken() {
+  var token = document.getElementById('gh-token').value.trim();
+  if(token.length > 10) {
+    localStorage.setItem('deploy_token', token);
+    document.getElementById('token-saved').style.display = 'inline';
+  }
+}
+
+function togglePw() {
+  var inp = document.getElementById('gh-token');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function updateSize() {
+  var code = document.getElementById('html-code').value;
+  var kb = (new Blob([code]).size / 1024).toFixed(1);
+  document.getElementById('file-size').textContent = code ? kb + ' KB' : '';
+  document.getElementById('btn-clear').style.display = code ? 'block' : 'none';
+}
+
+async function pasteFromClipboard() {
+  var btn = document.querySelector('.btn-paste');
+  try {
+    if(!navigator.clipboard || !navigator.clipboard.readText) {
+      alert('⚠️ Trình duyệt không hỗ trợ. Vui lòng giữ ô textarea và Paste tay.');
+      return;
+    }
+    var text = await navigator.clipboard.readText();
+    if(!text || text.trim().length < 50) {
+      alert('⚠️ Clipboard rỗng hoặc quá ngắn. Hãy copy code HTML từ Claude trước!');
+      return;
+    }
+    document.getElementById('html-code').value = text;
+    updateSize();
+    // Phản hồi nhẹ
+    if(btn){
+      var oldText = btn.textContent;
+      btn.textContent = '✅ Đã dán ' + (new Blob([text]).size/1024).toFixed(1) + ' KB';
+      btn.style.background = '#0d2a1a';
+      btn.style.color = '#44ff88';
+      btn.style.borderColor = '#44ff8833';
+      setTimeout(function(){
+        btn.textContent = oldText;
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }, 1800);
+    }
+  } catch(e) {
+    alert('❌ Không đọc được clipboard: ' + e.message + '\n\n💡 Trên iOS: Cần dùng HTTPS và cho phép quyền clipboard.');
+  }
+}
+
+function clearCode() {
+  if(!confirm('Xóa code HTML hiện tại?')) return;
+  document.getElementById('html-code').value = '';
+  updateSize();
+}
+
+function log(msg, type) {
+  var box = document.getElementById('log');
+  box.classList.add('show');
+  var line = document.createElement('div');
+  line.className = 'status-line ' + (type||'');
+  line.textContent = msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progress').classList.add('show');
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+async function deploy() {
+  var token = document.getElementById('gh-token').value.trim();
+  var code = document.getElementById('html-code').value;
+  var app = APPS[currentApp];
+
+  if(!token) { alert('Vui lòng nhập GitHub Token!'); return; }
+  if(!code || code.length < 100) { alert('Vui lòng paste code HTML!'); return; }
+
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('success-banner').classList.remove('show');
+  document.getElementById('btn-deploy').disabled = true;
+  document.getElementById('btn-deploy').textContent = '⏳ Đang deploy...';
+
+  try {
+    log('📱 App: ' + app.label, 'info');
+    log('📁 ' + app.user + '/' + app.repo + ' → ' + app.file, 'info');
+    setProgress(10);
+
+    var apiUrl = 'https://api.github.com/repos/' + app.user + '/' + app.repo + '/contents/' + app.file;
+    var headers = {
+      'Authorization': 'token ' + token,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    };
+
+    // Get SHA
+    var sha = null;
+    try {
+      var getRes = await fetch(apiUrl + '?ref=' + app.branch, {headers});
+      if(getRes.ok) { var d = await getRes.json(); sha = d.sha; log('✓ File cũ: ' + Math.round(d.size/1024) + ' KB', 'info'); }
+    } catch(e){}
+    setProgress(30);
+
+    log('🔐 Mã hóa ' + (new Blob([code]).size/1024).toFixed(1) + ' KB...', 'info');
+    var encoded = btoa(unescape(encodeURIComponent(code)));
+    setProgress(55);
+
+    log('🚀 Đang push lên GitHub...', 'info');
+    var body = { message: '🚀 Deploy ' + app.file + ' - ' + new Date().toLocaleString('vi-VN'), content: encoded, branch: app.branch };
+    if(sha) body.sha = sha;
+
+    var res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if(!res.ok) { var err = await res.json(); throw new Error(err.message || 'Lỗi ' + res.status); }
+
+    log('✅ Push thành công!', 'ok');
+    setProgress(100);
+
+    // Show success
+    document.getElementById('success-note').textContent = 'Chờ 15-30 giây rồi mở app';
+    document.getElementById('btn-open-app').href = app.url;
+    document.getElementById('btn-open-app').textContent = '🔗 Mở ' + app.label;
+    document.getElementById('success-banner').classList.add('show');
+
+    // Tự động xóa code HTML để chuẩn bị cho file tiếp theo
+    document.getElementById('html-code').value = '';
+    updateSize();
+    log('🧹 Đã xóa code HTML — sẵn sàng cho file tiếp theo', 'info');
+
+  } catch(e) {
+    log('❌ ' + e.message, 'err');
+    log('💡 Kiểm tra Token và kết nối mạng', 'warn');
+  } finally {
+    document.getElementById('btn-deploy').disabled = false;
+    document.getElementById('btn-deploy').textContent = '🚀 Deploy lên GitHub';
+  }
+}
+</script>
+
+</body>
+</html>
