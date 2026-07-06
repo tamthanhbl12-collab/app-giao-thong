@@ -199,7 +199,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.0</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.2</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right">
@@ -292,6 +292,13 @@ textarea{resize:none;min-height:60px}
         <div class="nav-stat"><div class="nav-stat-val" id="navETA">--</div><div class="nav-stat-lbl">phút</div></div>
         <button class="nav-cancel" onclick="cancelNav()">✕ Hủy</button>
       </div>
+    </div>
+  </div>
+  <!-- Rain Forecast Bar -->
+  <div class="rain-bar" id="rainBar">
+    <div class="rain-title">🌧 Dự báo thời tiết dọc lộ trình</div>
+    <div class="rain-points" id="rainPoints">
+      <div style="color:var(--muted);font-size:12px;padding:4px">Đặt điểm đến để xem dự báo...</div>
     </div>
   </div>
 </div>
@@ -1573,6 +1580,8 @@ async function fetchRoute(fromLat,fromLng,toLat,toLng){
       const min=Math.round(route.duration/60);
       showToast(`✅ Lộ trình: ${km}km · ${min} phút`);
       updateNavHUD();
+      // Dự báo mưa dọc lộ trình
+      duBaoMuaLocTrinh(coords);
       // Hiện thông tin ngay trên HUD tab
       document.getElementById('navInfo').classList.add('show');
       document.getElementById('navDist').textContent=km;
@@ -1685,14 +1694,15 @@ function updateNavInfo(){
   if(navPolyline&&map)navPolyline.setLatLngs([[myLat,myLng],[navDest.lat,navDest.lng]]);
 
   // TTS khi gần tới nơi
-  if(d<200&&d>50){
+  const dToDestM=dist(myLat,myLng,navDest.lat,navDest.lng);
+  if(dToDestM<200&&dToDestM>50){
     const now=Date.now();
     if(now-lastWarnTime>15000){
       lastWarnTime=now;
-      speak(`Sắp đến nơi. Còn ${Math.round(d)} mét`);
+      speak(`Sắp đến nơi. Còn ${Math.round(dToDestM)} mét`);
     }
   }
-  if(d<30){
+  if(dToDestM<30){
     speak('Đã đến điểm đến');
     cancelNav();
   }
@@ -1734,13 +1744,159 @@ function updateNavHUD(){
 
 function cancelNav(){
   navDest=null;
+  rainForecastData=null;
   document.getElementById('navInfo').classList.remove('show');
   document.getElementById('navDest').value='';
+  const rb=document.getElementById('rainBar');
+  if(rb)rb.classList.remove('show');
   if(map){
     if(navMarker){map.removeLayer(navMarker);navMarker=null;}
     if(navPolyline){map.removeLayer(navPolyline);navPolyline=null;}
   }
   showToast('🛑 Đã hủy điều hướng');
+}
+
+// ═══════════════ DỰ BÁO MƯA THEO LỘ TRÌNH ═══════════════
+const WMO_RAIN = {
+  0:'☀️',1:'🌤',2:'⛅',3:'☁️',
+  45:'🌫',48:'🌫',
+  51:'🌦',53:'🌦',55:'🌧',
+  61:'🌧',63:'🌧',65:'🌧',
+  80:'🌦',81:'🌧',82:'⛈',
+  95:'⛈',96:'⛈',99:'⛈',
+};
+const RAIN_CODES=[51,53,55,61,63,65,80,81,82,95,96,99];
+const HEAVY_CODES=[65,82,95,96,99];
+
+let rainForecastData=null;
+let rainWarnCooldown=0;
+
+// Lấy N điểm đều nhau dọc lộ trình
+function layDiemLocTrinh(coords, soLuong=5){
+  if(!coords||coords.length<2)return[];
+  const result=[];
+  const step=Math.floor(coords.length/(soLuong-1));
+  for(let i=0;i<soLuong-1;i++) result.push(coords[i*step]);
+  result.push(coords[coords.length-1]);
+  return result;
+}
+
+// Tính ETA tới điểm thứ i trên lộ trình (giây)
+function tinhETADiem(coords, idx, tocDoMs){
+  if(!coords||idx<=0)return 0;
+  let d=0;
+  for(let i=0;i<Math.min(idx,coords.length-1);i++){
+    d+=dist(coords[i][0],coords[i][1],coords[i+1][0],coords[i+1][1]);
+  }
+  return d/Math.max(tocDoMs,5);
+}
+
+// Query Open-Meteo cho 1 điểm — lấy thời tiết theo giờ
+async function layThoiTietDiem(lat,lng){
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,weather_code,precipitation_probability&forecast_days=1&timezone=Asia%2FBangkok`;
+  const res=await fetch(url,{signal:AbortSignal.timeout(6000)});
+  return await res.json();
+}
+
+// Hàm chính: dự báo mưa toàn lộ trình
+async function duBaoMuaLocTrinh(routeCoords){
+  const bar=document.getElementById('rainBar');
+  const pts=document.getElementById('rainPoints');
+  if(!bar||!pts)return;
+
+  bar.classList.add('show');
+  pts.innerHTML='<div style="color:var(--muted);font-size:12px;padding:4px">⏳ Đang tải dự báo...</div>';
+
+  const tocDoMs=Math.max(mySpeed||10,10); // m/s, min 36km/h
+  const diemChon=layDiemLocTrinh(routeCoords,5);
+
+  const results=[];
+  for(let i=0;i<diemChon.length;i++){
+    const [lat,lng]=diemChon[i];
+    const etaSec=tinhETADiem(routeCoords,
+      Math.floor(i*(routeCoords.length-1)/(diemChon.length-1)),tocDoMs);
+    const etaMs=Date.now()+etaSec*1000;
+    const etaHour=new Date(etaMs).getHours();
+    const etaMin=new Date(etaMs).getMinutes();
+    const etaStr=`${etaHour}:${String(etaMin).padStart(2,'0')}`;
+
+    try{
+      const d=await layThoiTietDiem(lat,lng);
+      const hourIdx=new Date(etaMs).getHours();
+      const code=d.hourly.weather_code[hourIdx];
+      const temp=Math.round(d.hourly.temperature_2m[hourIdx]);
+      const rainProb=d.hourly.precipitation_probability[hourIdx];
+
+      // Tên địa điểm rút gọn (tọa độ)
+      const locName=i===0?'Vị trí tôi':i===diemChon.length-1?'Điểm đến':`~${Math.round(etaSec/60)}ph`;
+
+      results.push({lat,lng,etaStr,code,temp,rainProb,locName,etaSec});
+    }catch(e){
+      results.push({lat,lng,etaStr,code:0,temp:0,rainProb:0,locName:`Điểm ${i+1}`,etaSec});
+    }
+    await new Promise(r=>setTimeout(r,300)); // Tránh spam API
+  }
+
+  rainForecastData=results;
+  renderRainBar(results);
+  kiemTraCanhBaoMua(results);
+}
+
+function renderRainBar(results){
+  const pts=document.getElementById('rainPoints');
+  if(!pts)return;
+
+  pts.innerHTML=results.map(r=>{
+    const icon=WMO_RAIN[r.code]||'🌡';
+    const isMua=RAIN_CODES.includes(r.code);
+    const isHeavy=HEAVY_CODES.includes(r.code);
+    const cls=isHeavy?'rain-point heavy':isMua?'rain-point warn':'rain-point';
+    const probText=r.rainProb>0?`💧${r.rainProb}%`:`${r.temp}°C`;
+    return`<div class="${cls}">
+      <div class="rain-icon">${icon}</div>
+      <div class="rain-time">${r.etaStr}</div>
+      <div class="rain-temp">${probText}</div>
+      <div class="rain-loc">${r.locName}</div>
+    </div>`;
+  }).join('');
+}
+
+function kiemTraCanhBaoMua(results){
+  const now=Date.now();
+  if(now-rainWarnCooldown<120000)return; // Cảnh báo tối đa mỗi 2 phút
+
+  // Tìm điểm mưa sớm nhất
+  const muaSom=results.find(r=>RAIN_CODES.includes(r.code)&&r.etaSec>0&&r.etaSec<3600);
+  if(!muaSom)return;
+
+  const phut=Math.round(muaSom.etaSec/60);
+  const heavy=HEAVY_CODES.includes(muaSom.code);
+  const msg=heavy
+    ?`Cảnh báo: ${phut} phút nữa có dông bão mạnh trên lộ trình!`
+    :`Lưu ý: Khoảng ${phut} phút nữa có mưa trên đường đi`;
+
+  rainWarnCooldown=now;
+
+  // Hiện popup cảnh báo
+  const existing=document.getElementById('rainWarnPopup');
+  if(existing)existing.remove();
+
+  const popup=document.createElement('div');
+  popup.id='rainWarnPopup';
+  popup.style.cssText=`position:fixed;top:160px;left:50%;transform:translateX(-50%);z-index:9999;
+    background:${heavy?'rgba(248,81,73,.95)':'rgba(88,166,255,.95)'};
+    color:#000;padding:12px 18px;border-radius:14px;font-size:13px;font-weight:700;
+    text-align:center;max-width:300px;box-shadow:0 4px 20px rgba(0,0,0,.5);cursor:pointer`;
+  popup.innerHTML=`${heavy?'⛈':'🌧'} ${msg}<br><span style="font-size:10px;opacity:.8">Bấm để đóng</span>`;
+  popup.onclick=()=>popup.remove();
+  document.body.appendChild(popup);
+
+  // TTS cảnh báo
+  beep(880,0.1,0.4);
+  setTimeout(()=>speak(msg),500);
+
+  // Tự đóng sau 15 giây
+  setTimeout(()=>popup?.remove(),15000);
 }
 
 // ═══════════════ WEATHER ═══════════════
