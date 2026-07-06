@@ -199,7 +199,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.5</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.7</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right">
@@ -215,6 +215,7 @@ textarea{resize:none;min-height:60px}
   <div class="tab" onclick="switchTab('list')">📋 Danh sách</div>
   <div class="tab" onclick="switchTab('add')">➕ Thêm</div>
   <div class="tab" onclick="switchTab('cam')">📷 70mai</div>
+  <div class="tab" onclick="switchTab('xe')">🚛 Xe</div>
 </div>
 
 <!-- ══════════ HUD PANEL ══════════ -->
@@ -404,6 +405,24 @@ textarea{resize:none;min-height:60px}
         </div>
       </div>
     </div>
+
+    <div>
+      <div class="section-title">📋 Import từ script lọc ngã tư</div>
+      <div class="section-box">
+        <p class="tip">Sau khi chạy script Python → chọn file <strong style="color:var(--amber)">mapgo_import.json</strong> để import hàng loạt điểm ngã tư vào app.</p>
+        <div class="upload-zone">
+          <input type="file" accept=".json" onchange="importJsonPoints(this.files[0])">
+          <div class="upload-icon">📋</div>
+          <div class="upload-text">Chọn file mapgo_import.json</div>
+          <div class="upload-sub">Xuất từ script filter_70mai.py</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:none"><!-- placeholder --></div>
+    <div style="display:none">
+      </div>
+    </div>
     <div id="camResults" style="display:none">
       <div class="section-title">📋 Kết quả đọc ảnh</div>
       <div id="camResultList" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -412,6 +431,12 @@ textarea{resize:none;min-height:60px}
 </div>
 
 <!-- STATS -->
+<!-- ══════════ XE PANEL ══════════ -->
+<div class="panel" id="panel-xe">
+  <div class="scroll-panel" id="xeContainer">
+  </div>
+</div>
+
 <div class="stats-bar">
   <div class="stat-item"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Tổng điểm</div></div>
   <div class="stat-item"><div class="stat-num" id="statNearby" style="color:var(--red)">0</div><div class="stat-label">Phía trước</div></div>
@@ -642,6 +667,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
     if(kmh>5)queryRoadSpeed(myLat,myLng);
     checkSpeedLimit(kmh);
     updateNavInfo();
+    trackTripGPS(myLat,myLng,kmh);
     if(driveMode)runHUD();
   },err=>{
     document.getElementById('gpsStatus').textContent='📍 Không có GPS — bật quyền vị trí';
@@ -1154,6 +1180,32 @@ function renderCamResults(results){
     }
     list.appendChild(box);
   });
+}
+
+// Import hàng loạt từ JSON script
+async function importJsonPoints(file){
+  if(!file)return;
+  try{
+    const text=await file.text();
+    const data=JSON.parse(text);
+    if(!Array.isArray(data)||!data.length){showToast('❌ File JSON không hợp lệ');return;}
+    let count=0;
+    data.forEach(p=>{
+      // Kiểm tra không trùng điểm cũ
+      const nearby=points.some(x=>dist(x.lat,x.lng,p.lat,p.lng)<30);
+      if(!nearby&&p.lat&&p.lng){
+        points.push({...p,id:Date.now()+count});
+        count++;
+      }
+    });
+    if(count>0){
+      localStorage.setItem(SK,JSON.stringify(points));
+      renderMarkers();updateStats();
+      showToast(`✅ Đã import ${count} điểm ngã tư!`);
+    } else {
+      showToast('⚠️ Không có điểm mới (đã tồn tại hết)');
+    }
+  }catch(e){showToast('❌ Lỗi đọc file JSON');}
 }
 
 function saveCamPoint(i,lat,lng){
@@ -1677,6 +1729,263 @@ function checkLoadWeather(){
   setInterval(()=>fetchWeather(myLat,myLng),600000);
 }
 
+// ═══════════════ QUẢN LÝ XE ═══════════════
+const XE_KEY='mapgo_xe_v1';
+const TRIP_KEY='mapgo_trips_v1';
+let xeDB=JSON.parse(localStorage.getItem(XE_KEY)||'[]');
+let tripDB=JSON.parse(localStorage.getItem(TRIP_KEY)||'[]');
+
+// GPS auto-track
+let tripActive=false,tripStartLat=null,tripStartLng=null,tripStartTime=null,tripAccumKm=0,lastTripLat=null,lastTripLng=null;
+
+function saveXeDB(){localStorage.setItem(XE_KEY,JSON.stringify(xeDB));}
+function saveTripDB(){localStorage.setItem(TRIP_KEY,JSON.stringify(tripDB));}
+
+// Tự động tính km khi lái (gọi từ GPS update)
+function trackTripGPS(lat,lng,kmh){
+  if(!tripActive||!lastTripLat)return;
+  if(kmh<3)return; // đứng yên
+  const d=dist(lastTripLat,lastTripLng,lat,lng)/1000;
+  if(d<0.005||d>0.5)return; // bỏ qua nếu quá nhỏ hoặc GPS nhảy
+  tripAccumKm+=d;
+  lastTripLat=lat;lastTripLng=lng;
+}
+
+function startTrip(xeId){
+  if(!myLat){showToast('⏳ Chưa có GPS');return;}
+  const xe=xeDB.find(x=>x.id===xeId);
+  if(!xe){showToast('⚠️ Không tìm thấy xe');return;}
+  tripActive=true;
+  tripStartLat=myLat;tripStartLng=myLng;
+  tripStartTime=Date.now();
+  tripAccumKm=0;
+  lastTripLat=myLat;lastTripLng=myLng;
+  localStorage.setItem('mapgo_active_trip',JSON.stringify({xeId,startTime:tripStartTime}));
+  renderXePanel();
+  showToast(`🚗 Bắt đầu tính km cho ${xe.bienSo}`);
+}
+
+function stopTrip(xeId,manualKm){
+  const xe=xeDB.find(x=>x.id===xeId);
+  if(!xe)return;
+  const km=manualKm||parseFloat(tripAccumKm.toFixed(2));
+  if(km<=0){showToast('⚠️ Chưa có km nào được ghi nhận');tripActive=false;renderXePanel();return;}
+  const trip={
+    id:Date.now(),xeId,
+    date:new Date().toLocaleDateString('vi-VN'),
+    dateTs:Date.now(),
+    km,
+    duration:tripStartTime?Math.round((Date.now()-tripStartTime)/60000):0,
+    note:''
+  };
+  tripDB.push(trip);saveTripDB();
+  xe.kmHienTai=(xe.kmHienTai||0)+km;
+  saveXeDB();
+  tripActive=false;tripAccumKm=0;
+  localStorage.removeItem('mapgo_active_trip');
+  checkBaoDuong(xe);
+  renderXePanel();
+  showToast(`✅ Ghi nhận ${km.toFixed(1)} km cho ${xe.bienSo}`);
+}
+
+function checkBaoDuong(xe){
+  const alerts=[];
+  if(xe.bdKm&&xe.bdKmLast){
+    const conLai=xe.bdKm-(xe.kmHienTai-xe.bdKmLast);
+    if(conLai<=500) alerts.push(`⚠️ ${xe.bienSo}: Còn ${Math.round(conLai)}km đến bảo dưỡng!`);
+  }
+  if(xe.bdNgay&&xe.bdNgayLast){
+    const ngayQua=Math.round((Date.now()-xe.bdNgayLast)/(86400000));
+    const conLai=xe.bdNgay-ngayQua;
+    if(conLai<=7) alerts.push(`⚠️ ${xe.bienSo}: Còn ${conLai} ngày đến bảo dưỡng định kỳ!`);
+  }
+  alerts.forEach(a=>showToast(a));
+}
+
+function addXe(){
+  const bienSo=document.getElementById('xeBienSo').value.trim().toUpperCase();
+  if(!bienSo){showToast('⚠️ Nhập biển số xe');return;}
+  const xe={
+    id:Date.now(),
+    bienSo,
+    loai:document.getElementById('xeLoai').value,
+    taiTrong:parseFloat(document.getElementById('xeTaiTrong').value)||0,
+    tinhTrang:document.getElementById('xeTinhTrang').value,
+    mucXang:parseFloat(document.getElementById('xeMucXang').value)||0,
+    kmHienTai:parseFloat(document.getElementById('xeKmHienTai').value)||0,
+    bdKm:parseInt(document.getElementById('xeBdKm').value)||5000,
+    bdKmLast:parseFloat(document.getElementById('xeKmHienTai').value)||0,
+    bdNgay:parseInt(document.getElementById('xeBdNgay').value)||90,
+    bdNgayLast:Date.now(),
+    botThang:parseFloat(document.getElementById('xeBot').value)||0,
+    ghiChu:document.getElementById('xeGhiChu').value.trim(),
+  };
+  xeDB.push(xe);saveXeDB();
+  document.getElementById('addXeForm').style.display='none';
+  renderXePanel();
+  showToast(`✅ Đã thêm xe ${bienSo}`);
+}
+
+function deleteXe(id){
+  if(!confirm('Xóa xe này?'))return;
+  xeDB=xeDB.filter(x=>x.id!==id);
+  tripDB=tripDB.filter(t=>t.xeId!==id);
+  saveXeDB();saveTripDB();
+  renderXePanel();
+}
+
+function addManualKm(xeId){
+  const km=parseFloat(prompt('Nhập km chuyến này:'));
+  if(isNaN(km)||km<=0){showToast('⚠️ Km không hợp lệ');return;}
+  stopTrip(xeId,km);
+}
+
+function getMonthStats(xeId){
+  const now=new Date();
+  const thang=now.getMonth(),nam=now.getFullYear();
+  const trips=tripDB.filter(t=>{
+    if(t.xeId!==xeId)return false;
+    const d=new Date(t.dateTs);
+    return d.getMonth()===thang&&d.getFullYear()===nam;
+  });
+  const kmThang=trips.reduce((s,t)=>s+t.km,0);
+  const xe=xeDB.find(x=>x.id===xeId);
+  const xangThang=xe?(kmThang/100*xe.mucXang).toFixed(1):0;
+  return{kmThang:kmThang.toFixed(1),xangThang,soChuyenThang:trips.length};
+}
+
+function getBaoDuongStatus(xe){
+  let statusKm='',statusNgay='',urgentKm=false,urgentNgay=false;
+  if(xe.bdKm&&xe.bdKmLast!==undefined){
+    const conLai=xe.bdKm-(xe.kmHienTai-xe.bdKmLast);
+    statusKm=conLai>0?`Còn ${Math.round(conLai)}km`:`Quá hạn ${Math.round(-conLai)}km`;
+    urgentKm=conLai<=500;
+  }
+  if(xe.bdNgay&&xe.bdNgayLast){
+    const ngayQua=Math.round((Date.now()-xe.bdNgayLast)/86400000);
+    const conLai=xe.bdNgay-ngayQua;
+    statusNgay=conLai>0?`Còn ${conLai} ngày`:`Quá hạn ${-conLai} ngày`;
+    urgentNgay=conLai<=7;
+  }
+  return{statusKm,statusNgay,urgentKm,urgentNgay};
+}
+
+function markBaoDuongDone(xeId){
+  const xe=xeDB.find(x=>x.id===xeId);
+  if(!xe)return;
+  xe.bdKmLast=xe.kmHienTai;
+  xe.bdNgayLast=Date.now();
+  saveXeDB();renderXePanel();
+  showToast('✅ Đã đánh dấu bảo dưỡng xong!');
+}
+
+function renderXePanel(){
+  const c=document.getElementById('xeContainer');
+  const activeTrip=JSON.parse(localStorage.getItem('mapgo_active_trip')||'null');
+
+  let html2=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <div class="section-title" style="margin:0">🚛 Danh sách xe</div>
+    <button onclick="document.getElementById('addXeForm').style.display='block';this.style.display='none'" style="padding:6px 12px;border-radius:8px;border:none;background:var(--green);color:#000;font-size:12px;font-weight:700;cursor:pointer">+ Thêm xe</button>
+  </div>
+
+  <!-- FORM THÊM XE -->
+  <div id="addXeForm" style="display:none" class="section-box">
+    <div class="section-title">➕ Thêm xe mới</div>
+    <div class="row2">
+      <div class="form-group"><label>Biển số *</label><input id="xeBienSo" placeholder="VD: 52C-123.45" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Loại xe</label>
+        <select id="xeLoai"><option value="Xe tải">🚛 Xe tải</option><option value="Xe ben">🏗️ Xe ben</option><option value="Xe đầu kéo">🚜 Đầu kéo</option><option value="Xe con">🚗 Xe con</option><option value="Xe máy">🏍️ Xe máy</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-group"><label>Tải trọng (tấn)</label><input type="number" id="xeTaiTrong" placeholder="5" min="0" step="0.5"></div>
+      <div class="form-group"><label>Tình trạng</label>
+        <select id="xeTinhTrang"><option value="Mới">✨ Mới</option><option value="Tốt">👍 Tốt</option><option value="Trung bình">⚠️ Trung bình</option><option value="Cũ">🔧 Cũ</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-group"><label>Định mức xăng (lít/100km)</label><input type="number" id="xeMucXang" placeholder="12" min="1" step="0.5"></div>
+      <div class="form-group"><label>Km hiện tại (đồng hồ xe)</label><input type="number" id="xeKmHienTai" placeholder="50000" min="0"></div>
+    </div>
+    <div class="row2">
+      <div class="form-group"><label>Bảo dưỡng mỗi (km)</label><input type="number" id="xeBdKm" placeholder="5000" min="0"></div>
+      <div class="form-group"><label>Bảo dưỡng mỗi (ngày)</label><input type="number" id="xeBdNgay" placeholder="90" min="0"></div>
+    </div>
+    <div class="form-group"><label>BOT ước tính (đ/tháng)</label><input type="number" id="xeBot" placeholder="500000" min="0"></div>
+    <div class="form-group"><label>Ghi chú</label><input id="xeGhiChu" placeholder="VD: Xe chạy tuyến Bạc Liêu - TP.HCM"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button onclick="addXe()" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--green);color:#000;font-weight:700;cursor:pointer">💾 Lưu xe</button>
+      <button onclick="document.getElementById('addXeForm').style.display='none';document.querySelector('.tab:last-child+.tab, button[onclick*=addXeForm]')&&document.querySelectorAll('button[onclick*=addXeForm]')[0].style.display=''" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">Hủy</button>
+    </div>
+  </div>`;
+
+  if(!xeDB.length){
+    html2+=`<div class="list-empty"><div class="ei">🚛</div>Chưa có xe nào<br><span style="font-size:11px">Bấm "+ Thêm xe" để bắt đầu</span></div>`;
+  } else {
+    xeDB.forEach(xe=>{
+      const stats=getMonthStats(xe.id);
+      const bd=getBaoDuongStatus(xe);
+      const isActive=activeTrip&&activeTrip.xeId===xe.id;
+      const urgentColor=bd.urgentKm||bd.urgentNgay?'border-color:rgba(248,81,73,.5)':'';
+
+      html2+=`<div class="card" style="${urgentColor}">
+        <div style="font-size:24px;flex-shrink:0">🚛</div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <div class="card-name" style="margin:0">${xe.bienSo}</div>
+            <span class="badge ${xe.tinhTrang==='Mới'?'bg':xe.tinhTrang==='Tốt'?'bg':'br'}">${xe.tinhTrang}</span>
+          </div>
+          <div class="card-addr">${xe.loai} · ${xe.taiTrong}T · ${xe.mucXang}L/100km</div>
+          
+          <!-- Stats tháng này -->
+          <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin:6px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center">
+            <div><div style="font-size:15px;font-weight:900;color:var(--blue)">${stats.kmThang}</div><div style="font-size:10px;color:var(--muted)">km tháng</div></div>
+            <div><div style="font-size:15px;font-weight:900;color:var(--amber)">${stats.xangThang}</div><div style="font-size:10px;color:var(--muted)">lít xăng</div></div>
+            <div><div style="font-size:15px;font-weight:900;color:var(--green)">${stats.soChuyenThang}</div><div style="font-size:10px;color:var(--muted)">chuyến</div></div>
+          </div>
+
+          <!-- Bảo dưỡng -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            ${bd.statusKm?`<span class="badge ${bd.urgentKm?'br':'bm'}">🔧 ${bd.statusKm}</span>`:''}
+            ${bd.statusNgay?`<span class="badge ${bd.urgentNgay?'br':'bm'}">📅 ${bd.statusNgay}</span>`:''}
+            ${xe.botThang?`<span class="badge ba">🛣️ BOT ${(xe.botThang/1000).toFixed(0)}k/th</span>`:''}
+          </div>
+
+          <!-- GPS km + buttons -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${isActive
+              ?`<button onclick="stopTrip(${xe.id})" style="padding:6px 10px;border-radius:8px;border:none;background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">⏹ Dừng GPS (${tripAccumKm.toFixed(1)}km)</button>`
+              :`<button onclick="startTrip(${xe.id})" style="padding:6px 10px;border-radius:8px;border:none;background:var(--green);color:#000;font-size:12px;font-weight:700;cursor:pointer">▶ Bắt đầu GPS</button>`
+            }
+            <button onclick="addManualKm(${xe.id})" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer">✏️ Nhập km</button>
+            <button onclick="markBaoDuongDone(${xe.id})" style="padding:6px 10px;border-radius:8px;border:1px solid var(--amber);background:rgba(240,136,62,.1);color:var(--amber);font-size:12px;cursor:pointer">✅ Đã bảo dưỡng</button>
+            <button onclick="deleteXe(${xe.id})" style="padding:6px 10px;border-radius:8px;border:1px solid rgba(248,81,73,.3);background:rgba(248,81,73,.1);color:var(--red);font-size:12px;cursor:pointer">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+
+  // Tổng kết tháng tất cả xe
+  if(xeDB.length>1){
+    const tongKm=xeDB.reduce((s,xe)=>s+parseFloat(getMonthStats(xe.id).kmThang),0);
+    const tongXang=xeDB.reduce((s,xe)=>s+parseFloat(getMonthStats(xe.id).xangThang),0);
+    const tongBot=xeDB.reduce((s,xe)=>s+(xe.botThang||0),0);
+    html2+=`<div class="section-box" style="border-color:var(--blue)">
+      <div class="section-title">📊 Tổng kết tháng — Cả đội xe</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;margin-top:8px">
+        <div><div style="font-size:20px;font-weight:900;color:var(--blue)">${tongKm.toFixed(0)}</div><div style="font-size:11px;color:var(--muted)">km/tháng</div></div>
+        <div><div style="font-size:20px;font-weight:900;color:var(--amber)">${tongXang.toFixed(0)}</div><div style="font-size:11px;color:var(--muted)">lít xăng</div></div>
+        <div><div style="font-size:20px;font-weight:900;color:var(--red)">${(tongBot/1000).toFixed(0)}k</div><div style="font-size:11px;color:var(--muted)">BOT/tháng</div></div>
+      </div>
+    </div>`;
+  }
+
+  c.innerHTML=html2;
+}
+
+// Gọi trackTripGPS từ GPS update
 // ═══════════════ STATS ═══════════════
 function updateStats(){
   document.getElementById('statTotal').textContent=points.length;
@@ -1685,11 +1994,12 @@ function updateStats(){
 
 // ═══════════════ TABS ═══════════════
 function switchTab(tab){
-  ['hud','map','list','add','cam'].forEach((t,i)=>{
+  ['hud','map','list','add','cam','xe'].forEach((t,i)=>{
     document.querySelectorAll('.tab')[i].classList.toggle('active',t===tab);
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
   });
   if(tab==='list')renderList();
+  if(tab==='xe')renderXePanel();
   if(tab==='map'&&map){
     setTimeout(()=>map.invalidateSize(),50);
     document.getElementById('mapSpeedBox').style.display='flex';
