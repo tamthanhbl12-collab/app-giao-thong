@@ -199,7 +199,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.3</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v4.4</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right">
@@ -279,7 +279,7 @@ textarea{resize:none;min-height:60px}
   <!-- Navigation Panel -->
   <div class="nav-panel" id="navPanel">
     <div class="nav-input-row">
-      <input type="text" class="nav-input" id="navDest" placeholder="🔍 Nhập điểm đến..." onkeydown="if(event.key==='Enter')startNav()">
+      <input type="text" class="nav-input" id="navDest" placeholder="🔍 Tên, tọa độ hoặc link Google Maps" onkeydown="if(event.key==='Enter')startNav()">
       <button class="nav-go-btn" onclick="startNav()">Đi ▶</button>
     </div>
     <div class="nav-info" id="navInfo">
@@ -1438,49 +1438,89 @@ let navDest=null; // {lat,lng,name}
 let navMarker=null;
 let navPolyline=null;
 
+// Parse tọa độ từ nhiều định dạng
+function parseCoords(q){
+  // Dạng: 10.036, 105.819 hoặc 10.036 105.819
+  const coord=/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/;
+  const m=q.match(coord);
+  if(m){
+    const a=parseFloat(m[1]),b=parseFloat(m[2]);
+    if(a>=-90&&a<=90&&b>=-180&&b<=180)return{lat:a,lng:b};
+  }
+  return null;
+}
+
+function parseGoogleMapsLink(q){
+  // Dạng @lat,lng hoặc /place/.../@lat,lng
+  const at=q.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+  if(at)return{lat:parseFloat(at[1]),lng:parseFloat(at[2])};
+  // Dạng ll=lat,lng
+  const ll=q.match(/ll=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+  if(ll)return{lat:parseFloat(ll[1]),lng:parseFloat(ll[2])};
+  // Dạng !3d lat !4d lng
+  const d3=q.match(/!3d(-?\d+\.?\d+).*?!4d(-?\d+\.?\d+)/);
+  if(d3)return{lat:parseFloat(d3[1]),lng:parseFloat(d3[2])};
+  return null;
+}
+
+function setNavDest(lat,lng,name){
+  navDest={lat,lng,name};
+  document.getElementById('navDestName').textContent='📍 '+name;
+  document.getElementById('navInfo').classList.add('show');
+  document.getElementById('navDest').value='';
+  if(map){
+    if(navMarker)map.removeLayer(navMarker);
+    navMarker=L.marker([lat,lng],{
+      icon:L.divIcon({
+        className:'',
+        html:'<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))">📍</div>',
+        iconSize:[28,28],iconAnchor:[14,28]
+      })
+    }).addTo(map).bindPopup(name);
+    if(myLat){
+      if(navPolyline)map.removeLayer(navPolyline);
+      navPolyline=L.polyline([[myLat,myLng],[lat,lng]],{
+        color:'#58a6ff',weight:3,opacity:0.7,dashArray:'8,6'
+      }).addTo(map);
+      map.fitBounds([[myLat,myLng],[lat,lng]],{padding:[40,40]});
+    }
+  }
+  updateNavInfo();
+  showToast('✅ Đã đặt điểm đến!');
+}
+
 async function startNav(){
   const q=document.getElementById('navDest').value.trim();
-  if(!q){showToast('⚠️ Nhập điểm đến');return;}
+  if(!q){showToast('⚠️ Nhập điểm đến / tọa độ / link Google Maps');return;}
 
-  // Geocode bằng Nominatim (OSM, miễn phí)
+  // Thử parse link Google Maps trước
+  const gmCoords=parseGoogleMapsLink(q);
+  if(gmCoords){
+    setNavDest(gmCoords.lat,gmCoords.lng,`${gmCoords.lat.toFixed(5)}, ${gmCoords.lng.toFixed(5)}`);
+    return;
+  }
+
+  // Thử parse tọa độ thẳng
+  const coords=parseCoords(q);
+  if(coords){
+    setNavDest(coords.lat,coords.lng,`${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
+    return;
+  }
+
+  // Tìm theo tên bằng Nominatim
   showToast('🔍 Đang tìm địa điểm...');
   try{
-    const biasLat=myLat||9.2845, biasLng=myLng||105.7243;
-    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=vn&viewbox=${biasLng-0.5},${biasLat+0.5},${biasLng+0.5},${biasLat-0.5}&bounded=0`;
+    const biasLat=myLat||9.2845,biasLng=myLng||105.7243;
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=vn&viewbox=${biasLng-1},${biasLat+1},${biasLng+1},${biasLat-1}&bounded=0`;
     const res=await fetch(url,{headers:{'Accept-Language':'vi'},signal:AbortSignal.timeout(8000)});
     const data=await res.json();
-    if(!data.length){showToast('❌ Không tìm thấy địa điểm');return;}
-
-    const place=data[0];
-    navDest={lat:parseFloat(place.lat),lng:parseFloat(place.lon),name:place.display_name.split(',').slice(0,2).join(', ')};
-
-    document.getElementById('navDestName').textContent='📍 '+navDest.name;
-    document.getElementById('navInfo').classList.add('show');
-    document.getElementById('navDest').value='';
-
-    // Vẽ marker điểm đến trên bản đồ
-    if(map){
-      if(navMarker)map.removeLayer(navMarker);
-      navMarker=L.marker([navDest.lat,navDest.lng],{
-        icon:L.divIcon({
-          className:'',
-          html:'<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))">📍</div>',
-          iconSize:[28,28],iconAnchor:[14,28]
-        })
-      }).addTo(map).bindPopup(navDest.name);
-
-      // Vẽ đường thẳng tạm (nếu có GPS)
-      if(myLat){
-        if(navPolyline)map.removeLayer(navPolyline);
-        navPolyline=L.polyline([[myLat,myLng],[navDest.lat,navDest.lng]],{
-          color:'#58a6ff',weight:3,opacity:0.7,dashArray:'8,6'
-        }).addTo(map);
-        map.fitBounds([[myLat,myLng],[navDest.lat,navDest.lng]],{padding:[40,40]});
-      }
+    if(!data.length){
+      showToast('❌ Không tìm thấy — thử paste tọa độ hoặc link Google Maps');
+      return;
     }
-    updateNavInfo();
-    showToast('✅ Đã đặt điểm đến!');
-  }catch(e){showToast('❌ Lỗi tìm kiếm — kiểm tra mạng');}
+    const place=data[0];
+    setNavDest(parseFloat(place.lat),parseFloat(place.lon),place.display_name.split(',').slice(0,3).join(', '));
+  }catch(e){showToast('❌ Lỗi mạng — thử lại');}
 }
 
 function updateNavInfo(){
