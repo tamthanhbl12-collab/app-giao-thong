@@ -93,7 +93,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 /* ═══ MAP ═══ */
 #map{flex:1;width:100%}
-.map-fab{position:absolute;bottom:80px;right:14px;z-index:200;display:flex;flex-direction:column;gap:10px}
+.map-fab{position:absolute;bottom:80px;right:14px;z-index:1000;display:flex;flex-direction:column;gap:10px}
 .fab-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.5);transition:transform .15s}
 .fab-btn:active{transform:scale(.92)}
 .fab-red{background:var(--red);color:#fff}
@@ -250,14 +250,14 @@ textarea{resize:none;min-height:60px}
   <div id="map"></div>
 
   <!-- Tốc độ overlay góc trái trên -->
-  <div id="mapSpeedBox" style="position:absolute;top:10px;left:10px;z-index:200;background:rgba(13,17,23,0.88);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:8px 12px;backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;min-width:62px;box-shadow:0 2px 12px rgba(0,0,0,.5)">
+  <div id="mapSpeedBox" style="position:absolute;top:10px;left:10px;z-index:1000;background:rgba(13,17,23,0.92);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:8px 12px;backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;min-width:62px;box-shadow:0 2px 12px rgba(0,0,0,.6)">
     <div id="mapSpeed" style="font-size:28px;font-weight:900;color:#e6edf3;line-height:1;font-variant-numeric:tabular-nums">0</div>
     <div style="font-size:10px;color:#8b949e;font-weight:600;letter-spacing:.5px">km/h</div>
     <div id="mapAccBadge" style="display:none;margin-top:4px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;background:rgba(248,81,73,.2);color:#f85149;border:1px solid rgba(248,81,73,.4)">⬇ Phanh</div>
   </div>
 
   <!-- Auto-detect banner -->
-  <div id="autoDetectBanner" style="display:none;position:absolute;bottom:80px;left:10px;right:70px;z-index:200;background:rgba(240,136,62,0.96);border-radius:12px;padding:12px 14px;box-shadow:0 4px 16px rgba(0,0,0,.5)">
+  <div id="autoDetectBanner" style="display:none;position:absolute;bottom:80px;left:10px;right:70px;z-index:1000;background:rgba(240,136,62,0.96);border-radius:12px;padding:12px 14px;box-shadow:0 4px 16px rgba(0,0,0,.5)">
     <div style="font-size:13px;font-weight:700;color:#000;margin-bottom:6px">🚦 Phát hiện có thể có đèn giao thông!</div>
     <div style="font-size:11px;color:rgba(0,0,0,0.7);margin-bottom:10px" id="autoDetectDesc">Xe dừng ~30 giây tại vị trí này</div>
     <div style="display:flex;gap:8px">
@@ -570,6 +570,11 @@ function startGPS(){
     document.getElementById('hudHeading').textContent=headingText(myHeading);
     document.getElementById('gpsStatus').textContent=`📍 ${myLat.toFixed(4)}, ${myLng.toFixed(4)}`;
     document.getElementById('gpsDot').className='hud-gps-dot ok';
+
+    // Lần đầu có GPS → tự zoom về vị trí
+    if(!myMarker && map){
+      map.setView([myLat,myLng],16);
+    }
 
     updateMyMarker();
     updateStats();
