@@ -236,7 +236,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.7</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.8</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -313,6 +313,7 @@ textarea{resize:none;min-height:60px}
     </div>
     <div class="nav-info" id="navInfo">
       <div class="nav-dest" id="navDestName">--</div>
+      <div id="navToll" style="font-size:11px;color:var(--amber);margin-bottom:6px;display:none"></div>
       <div class="nav-stats">
         <div class="nav-arrow" id="navArrow">⬆️</div>
         <div class="nav-direction" id="navDirectionText">Đi thẳng</div>
@@ -1654,6 +1655,8 @@ async function fetchRoute(fromLat,fromLng,toLat,toLng){
       updateNavHUD();
       // Dự báo mưa dọc lộ trình
       duBaoMuaLocTrinh(coords);
+      // Kiểm tra trạm thu phí (1 lần cho mỗi điểm đến)
+      if(!navDest.tollChecked){navDest.tollChecked=true;checkTollOnRoute(coords);}
       // Hiện thông tin ngay trên HUD tab
       document.getElementById('navInfo').classList.add('show');
       document.getElementById('navDist').textContent=km;
@@ -1677,6 +1680,77 @@ async function fetchRoute(fromLat,fromLng,toLat,toLng){
   document.getElementById('navDestName').textContent='📍 '+(navDest?.name||'Điểm đến');
   document.getElementById('navArrow').textContent='⬆️';
   document.getElementById('navDirectionText').textContent=`~${km}km (đường thẳng)`;
+}
+
+// ═══════════════ TRẠM THU PHÍ DỌC LỘ TRÌNH ═══════════════
+let tollMarkers=[],hudTollMarkers=[];
+
+function clearTollMarkers(){
+  tollMarkers.forEach(m=>map&&map.removeLayer(m));tollMarkers=[];
+  hudTollMarkers.forEach(m=>hudMap&&hudMap.removeLayer(m));hudTollMarkers=[];
+  const el=document.getElementById('navToll');
+  if(el){el.style.display='none';el.textContent='';}
+}
+
+async function checkTollOnRoute(coords){
+  clearTollMarkers();
+  const el=document.getElementById('navToll');
+  if(!el||!coords||coords.length<2)return;
+  el.style.display='block';
+  el.textContent='💰 Đang kiểm tra trạm thu phí...';
+  try{
+    // Lấy mẫu tối đa ~110 điểm dọc route để query Overpass (around theo polyline)
+    const step=Math.max(1,Math.floor(coords.length/110));
+    const chain=coords.filter((_,i)=>i%step===0||i===coords.length-1)
+      .map(c=>`${c[0].toFixed(5)},${c[1].toFixed(5)}`).join(',');
+    // Khung bao lộ trình + lề ~5km để query nhẹ (chỉ quét vùng này thay vì toàn cầu)
+    let s=90,w=180,n=-90,e=-180;
+    coords.forEach(c=>{if(c[0]<s)s=c[0];if(c[0]>n)n=c[0];if(c[1]<w)w=c[1];if(c[1]>e)e=c[1];});
+    const bbox=`${(s-0.05).toFixed(4)},${(w-0.05).toFixed(4)},${(n+0.05).toFixed(4)},${(e+0.05).toFixed(4)}`;
+    const q=`[out:json][timeout:20];(node["barrier"="toll_booth"](${bbox});node["highway"="toll_gantry"](${bbox});)->.t;node.t(around:150,${chain});out body;`;
+    // Thử lần lượt các server Overpass
+    let d=null;
+    for(const server of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter']){
+      try{
+        const res=await fetch(server,{
+          method:'POST',body:'data='+encodeURIComponent(q),
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          signal:AbortSignal.timeout(25000)
+        });
+        if(!res.ok)continue;
+        d=await res.json();break;
+      }catch(e){}
+    }
+    if(!d)throw new Error('all servers failed');
+    // Gom các node cùng 1 trạm (nhiều làn = nhiều node cách nhau <300m)
+    const stations=[];
+    (d.elements||[]).forEach(n=>{
+      const near=stations.find(s=>dist(s.lat,s.lng,n.lat,n.lon)<300);
+      if(near){if(!near.name&&n.tags&&n.tags.name)near.name=n.tags.name;return;}
+      stations.push({lat:n.lat,lng:n.lon,name:(n.tags&&n.tags.name)||''});
+    });
+    if(!stations.length){
+      el.textContent='✅ Lộ trình không qua trạm thu phí';
+      el.style.color='var(--green)';
+      return;
+    }
+    el.style.color='var(--amber)';
+    const names=stations.filter(s=>s.name).map(s=>s.name).slice(0,3).join(' · ');
+    el.textContent=`💰 Qua ${stations.length} trạm thu phí${names?': '+names:''}`;
+    speak(`Lộ trình đi qua ${stations.length} trạm thu phí`);
+    // Vẽ marker 💰 lên cả 2 bản đồ
+    const tollIcon=L.divIcon({className:'',html:'<div style="font-size:20px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))">💰</div>',iconSize:[20,20],iconAnchor:[10,10]});
+    stations.forEach(s=>{
+      const label=`💰 Trạm thu phí${s.name?': '+s.name:''}`;
+      if(map)tollMarkers.push(L.marker([s.lat,s.lng],{icon:tollIcon}).addTo(map).bindPopup(label));
+      if(hudMap)hudTollMarkers.push(L.marker([s.lat,s.lng],{icon:tollIcon}).addTo(hudMap).bindPopup(label));
+    });
+  }catch(e){
+    el.textContent='💰 Không kiểm tra được trạm thu phí (mạng)';
+    el.style.color='var(--muted)';
+    // Cho phép thử lại ở lần cập nhật route tiếp theo
+    if(navDest)navDest.tollChecked=false;
+  }
 }
 
 function drawStraightLine(fromLat,fromLng,toLat,toLng){
@@ -1722,13 +1796,23 @@ async function startNav(){
   }catch(e){showToast('❌ Lỗi mạng — thử lại');}
 }
 
+// Tính ETA (phút): ưu tiên thời gian lái xe từ OSRM, không thì ước theo tốc độ
+function calcETAmin(dMeters){
+  if(navDest&&navDest.routeDuration&&navDest.routeDist){
+    const ratio=Math.min(dMeters/navDest.routeDist,1);
+    return Math.max(1,Math.round(navDest.routeDuration/60*ratio));
+  }
+  // Chưa có route: nếu đang chạy dùng tốc độ thật, đứng yên mặc định 40 km/h (ô tô)
+  const kmh=mySpeed*3.6>15?mySpeed*3.6:40;
+  return Math.max(1,Math.round((dMeters/1000)/(kmh/60)));
+}
+
 function updateNavInfo(){
   if(!navDest||!myLat)return;
   const dStraight=dist(myLat,myLng,navDest.lat,navDest.lng);
   // Dùng route distance nếu có, nếu không dùng đường thẳng
   const dMeters=navDest.routeDist||dStraight;
-  const kmh=Math.max(mySpeed*3.6,20);
-  const etaMin=Math.round((dMeters/1000)/(kmh/60));
+  const etaMin=calcETAmin(dMeters);
   const distKm=(dMeters/1000).toFixed(1);
 
   document.getElementById('navDist').textContent=distKm;
@@ -1792,8 +1876,7 @@ function updateNavHUD(){
   info.classList.add('show');
 
   const dMeters=navDest.routeDist||dist(myLat,myLng,navDest.lat,navDest.lng);
-  const kmh=Math.max(mySpeed*3.6,10);
-  const etaMin=Math.round((dMeters/1000)/(kmh/60));
+  const etaMin=calcETAmin(dMeters);
   const distKm=(dMeters/1000).toFixed(1);
 
   document.getElementById('navDist').textContent=distKm;
@@ -1830,6 +1913,7 @@ function cancelNav(){
     if(navPolyline){map.removeLayer(navPolyline);navPolyline=null;}
   }
   hudMapClearNav();
+  clearTollMarkers();
   if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
   showToast('🛑 Đã hủy điều hướng');
 }
