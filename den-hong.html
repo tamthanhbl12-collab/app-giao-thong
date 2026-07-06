@@ -418,7 +418,7 @@ let warnedIds=new Set(); // đã cảnh báo lần này
 let lastWarnTime=0;
 
 // Map
-let map=null,markers=[],myMarker=null,infoWindow=null;
+let map=null,markers=[],myMarker=null;
 
 // Intervals
 let hudTick=null,listTick=null;
@@ -591,23 +591,17 @@ function startGPS(){
 
 function updateMyMarker(){
   if(!map||!myLat)return;
-  const pos={lat:myLat,lng:myLng};
   if(!myMarker){
-    myMarker=new google.maps.Marker({
-      position:pos,map,zIndex:999,title:'Vị trí của tôi',
-      icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#58a6ff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2,rotation:myHeading||0}
-    });
+    myMarker=L.marker([myLat,myLng],{icon:makeMyIcon(myHeading),zIndexOffset:1000}).addTo(map);
   } else {
-    myMarker.setPosition(pos);
-    if(myHeading!==null){
-      myMarker.setIcon({path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#58a6ff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2,rotation:myHeading});
-    }
+    myMarker.setLatLng([myLat,myLng]);
+    myMarker.setIcon(makeMyIcon(myHeading));
   }
 }
 
 function centerMe(){
   if(!myLat){showToast('⏳ Chưa có GPS');return;}
-  map.panTo({lat:myLat,lng:myLng});map.setZoom(16);
+  map.setView([myLat,myLng],16);
 }
 
 // ═══════════════ AUTO-DETECT ĐÈN GIAO THÔNG ═══════════════
@@ -911,49 +905,60 @@ function startHudTick(){
   },1000);
 }
 
-// ═══════════════ MAP ═══════════════
+// ═══════════════ MAP (Leaflet + OpenStreetMap) ═══════════════
 function initMap(){
-  map=new google.maps.Map(document.getElementById('map'),{
-    center:{lat:9.2845,lng:105.7243},zoom:14,
-    styles:darkStyle(),disableDefaultUI:true,gestureHandling:'greedy',
-    zoomControl:true,zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}
-  });
-  infoWindow=new google.maps.InfoWindow();
-  map.addListener('click',e=>{
-    document.getElementById('mLat').value=e.latLng.lat().toFixed(6);
-    document.getElementById('mLng').value=e.latLng.lng().toFixed(6);
+  map=L.map('map',{zoomControl:false}).setView([9.2845,105.7243],14);
+
+  // Dark tile từ CartoDB
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap © CARTO',
+    maxZoom:19
+  }).addTo(map);
+
+  // Zoom control góc trái dưới
+  L.control.zoom({position:'bottomleft'}).addTo(map);
+
+  // Click bản đồ để chọn vị trí
+  map.on('click',function(e){
+    document.getElementById('mLat').value=e.latlng.lat.toFixed(6);
+    document.getElementById('mLng').value=e.latlng.lng.toFixed(6);
     switchTab('add');showToast('📍 Đã chọn vị trí — điền thêm rồi lưu');
   });
+
   renderMarkers();startGPS();startHudTick();
 }
 
-function darkStyle(){return[
-  {elementType:'geometry',stylers:[{color:'#1d2530'}]},
-  {elementType:'labels.text.fill',stylers:[{color:'#8b949e'}]},
-  {elementType:'labels.text.stroke',stylers:[{color:'#1d2530'}]},
-  {featureType:'road',elementType:'geometry',stylers:[{color:'#2c3645'}]},
-  {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#c0c8d8'}]},
-  {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1927'}]},
-  {featureType:'poi',stylers:[{visibility:'off'}]},
-];}
+// Icon đèn hỏng
+function makeIcon(color){
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:22px;height:22px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 8px ${color}88"></div>`,
+    iconSize:[22,22],iconAnchor:[11,11]
+  });
+}
+
+// Icon vị trí của tôi (mũi tên)
+function makeMyIcon(heading){
+  const rot=heading||0;
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:20px;height:20px;transform:rotate(${rot}deg);display:flex;align-items:center;justify-content:center;font-size:18px;filter:drop-shadow(0 0 3px #58a6ff)">➤</div>`,
+    iconSize:[20,20],iconAnchor:[10,10]
+  });
+}
 
 function renderMarkers(){
-  markers.forEach(m=>m.setMap(null));markers=[];
+  markers.forEach(m=>map.removeLayer(m));markers=[];
   points.forEach(p=>{
-    const m=new google.maps.Marker({
-      position:{lat:p.lat,lng:p.lng},map,title:p.name,
-      icon:{path:google.maps.SymbolPath.CIRCLE,scale:11,fillColor:'#f85149',fillOpacity:1,strokeColor:'#fff',strokeWeight:2}
-    });
-    m.addListener('click',()=>{
-      const cyc=p.cycle;
-      infoWindow.setContent(`<div style="padding:4px;min-width:160px;font-family:-apple-system,sans-serif">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:3px">🚦 ${p.name}</div>
-        <div style="font-size:11px;color:#8b949e">${p.type||'Đèn hỏng'}</div>
-        ${cyc?`<div style="font-size:11px;color:#8b949e;margin-top:3px">⏱️ Xanh ${cyc.green}s · Vàng ${cyc.yellow}s · Đỏ ${cyc.red}s</div>`:''}
-        <a style="margin-top:8px;display:inline-block;background:#58a6ff;color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;text-decoration:none" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank">🧭 Chỉ đường</a>
-      </div>`);
-      infoWindow.open(map,m);
-    });
+    const m=L.marker([p.lat,p.lng],{icon:makeIcon('#f85149')}).addTo(map);
+    const cyc=p.cycle;
+    m.bindPopup(`<div style="font-family:-apple-system,sans-serif;min-width:150px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:3px">🚦 ${p.name}</div>
+      <div style="font-size:11px;color:#666">${p.type||'Đèn hỏng'}</div>
+      ${cyc?`<div style="font-size:11px;color:#666;margin-top:2px">⏱️ Xanh ${cyc.green}s · Vàng ${cyc.yellow}s · Đỏ ${cyc.red}s</div>`:''}
+      ${p.note?`<div style="font-size:11px;color:#666;margin-top:2px">📝 ${p.note}</div>`:''}
+      <a style="margin-top:8px;display:inline-block;background:#58a6ff;color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;text-decoration:none" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank">🧭 Chỉ đường</a>
+    </div>`);
     markers.push(m);
   });
 }
@@ -1196,7 +1201,7 @@ function confirmDelete(){
 function closeModal(id){document.getElementById(id).classList.remove('active');deleteId=null;cycleEditId=null;}
 
 function navTo(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,'_blank');}
-function viewMap(lat,lng){switchTab('map');if(map){map.panTo({lat,lng});map.setZoom(17);}}
+function viewMap(lat,lng){switchTab('map');if(map){map.setView([lat,lng],17);}}
 
 // ═══════════════ STATS ═══════════════
 function updateStats(){
@@ -1211,7 +1216,7 @@ function switchTab(tab){
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
   });
   if(tab==='list')renderList();
-  if(tab==='map'&&map)google.maps.event.trigger(map,'resize');
+  if(tab==='map'&&map)setTimeout(()=>map.invalidateSize(),50);
 }
 
 // ═══════════════ TOAST ═══════════════
@@ -1247,14 +1252,7 @@ document.addEventListener('visibilitychange',()=>{
 requestWakeLock();
 </script>
 
-<script>
-(function(){
-  const p=new URLSearchParams(window.location.search);
-  const key=p.get('key')||'AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNDE';
-  const s=document.createElement('script');
-  s.src=`https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&language=vi&region=VN`;
-  s.async=true;s.defer=true;document.body.appendChild(s);
-})();
-</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onload="initMap()"></script>
 </body>
 </html>
