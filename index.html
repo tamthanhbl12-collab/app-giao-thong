@@ -67,6 +67,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudSpeedBadge.over{border-color:var(--red)}
 #hudSpeedBadge.over #hudSpeedBig{color:var(--red)}
 
+/* Huy hiệu hướng đi + góc nón nổi trên bản đồ */
+#hudHeadingBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(13,17,23,.85);color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap}
+
 /* Nút loa trên bản đồ */
 #hudSoundBtn{position:absolute;top:12px;right:12px;z-index:500;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.95);font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 #hudSoundBtn.muted{opacity:.55}
@@ -248,7 +251,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.2</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.3</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -274,22 +277,6 @@ textarea{resize:none;min-height:60px}
 
 <!-- ══════════ HUD PANEL ══════════ -->
 <div class="panel active" id="panel-hud">
-
-  <!-- Speed bar -->
-  <div class="hud-speed-bar">
-    <div>
-      <div class="hud-speed" id="hudSpeed">0</div>
-      <div class="hud-speed-unit">km/h</div>
-    </div>
-    <div style="flex:1;padding:0 12px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Hướng di chuyển</div>
-      <div style="font-size:14px;font-weight:700" id="hudHeading">--</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:11px;color:var(--muted)">Góc nón phát hiện</div>
-      <div style="font-size:13px;font-weight:700;color:var(--amber)">± 60°</div>
-    </div>
-  </div>
 
   <!-- Weather bar -->
   <div id="weatherBar" style="background:rgba(22,27,34,0.95);border-bottom:1px solid var(--border);padding:7px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;font-size:12px">
@@ -341,6 +328,7 @@ textarea{resize:none;min-height:60px}
   <div id="hudMapWrap">
     <div id="hudMap"></div>
     <div id="hudSpeedBadge"><div id="hudSpeedBig">0</div><div class="hsb-unit">km/h</div></div>
+    <div id="hudHeadingBadge">🧭 <span id="hudHeading">--</span> · 👁 ±60°</div>
     <button id="hudSoundBtn" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
     <button id="hudFollowBtn" onclick="hudCenterMe()" title="Bám theo vị trí">🎯</button>
   </div>
@@ -723,7 +711,6 @@ function startGPS(){
     if(pos.coords.heading!==null&&!isNaN(pos.coords.heading))myHeading=pos.coords.heading;
 
     const kmh=Math.round(mySpeed*3.6);
-    document.getElementById('hudSpeed').textContent=kmh;
     // Đồng hồ tốc độ tròn trên bản đồ HUD
     const sb=document.getElementById('hudSpeedBig');
     if(sb)sb.textContent=kmh;
@@ -1591,7 +1578,7 @@ async function queryRoadSpeed(lat,lng){
 function checkSpeedLimit(kmh){
   if(!currentSpeedLimit)return;
   const badge=document.getElementById('speedStatusBadge');
-  const speedEl=document.getElementById('hudSpeed');
+  const speedEl=document.getElementById('hudSpeedBig');
   const now=Date.now();
 
   if(kmh>currentSpeedLimit+4){
