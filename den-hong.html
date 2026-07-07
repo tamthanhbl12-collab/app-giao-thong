@@ -247,7 +247,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v5.9</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.0</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -756,6 +756,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
 
     checkLoadWeather();
     if(kmh>5)queryRoadSpeed(myLat,myLng);
+    learnSpeedSample(kmh);
     checkSpeedLimit(kmh);
     updateNavInfo();
     updateNavHUD();
@@ -1437,6 +1438,34 @@ let lastOsmQuery=0;
 let speedWarnCooldown=0;
 let customLimits=JSON.parse(localStorage.getItem('customLimits')||'{}'); // {roadId: limit}
 
+// ═══ TỰ HỌC GIỚI HẠN TỪ TỐC ĐỘ THỰC TẾ ═══
+// Không cần bấm máy khi lái: app ghi lại tốc độ chạy trên từng đường,
+// đủ mẫu thì suy ra giới hạn đoạn đó (dùng khi OSM không có dữ liệu)
+let learnedSpeeds=JSON.parse(localStorage.getItem('learnedSpeeds')||'{}'); // {osmId:{name,samples:[]}}
+const VN_LIMITS=[30,40,50,60,70,80,90,100,120];
+let currentOsmId=null;
+let lastAnnouncedRoad='';
+
+function learnSpeedSample(kmh){
+  if(!currentOsmId||kmh<15)return; // chỉ học khi đang chạy ổn định
+  let rec=learnedSpeeds[currentOsmId];
+  if(!rec){rec={name:currentRoadName,samples:[]};learnedSpeeds[currentOsmId]=rec;}
+  rec.samples.push(kmh);
+  if(rec.samples.length>300)rec.samples.shift(); // giữ 300 mẫu gần nhất
+  if(rec.samples.length%20===0)localStorage.setItem('learnedSpeeds',JSON.stringify(learnedSpeeds));
+}
+
+function learnedLimit(osmId){
+  const rec=learnedSpeeds[osmId];
+  if(!rec||rec.samples.length<30)return null; // cần ≥30 mẫu (~30 giây chạy)
+  const sorted=[...rec.samples].sort((a,b)=>a-b);
+  const p85=sorted[Math.floor(sorted.length*0.85)]; // tốc độ hành trình điển hình
+  // Quy về mốc giới hạn VN gần nhất
+  let best=VN_LIMITS[0];
+  for(const v of VN_LIMITS){if(Math.abs(v-p85)<Math.abs(best-p85))best=v;}
+  return{limit:best,n:rec.samples.length};
+}
+
 // ═══ Giới hạn tốc độ theo Thông tư 31/2019/TT-BGTVT ═══
 // Phân 2 vùng: trong khu dân cư (urban) và ngoài (rural)
 // OSM dùng tag "highway" + "maxspeed:type" hoặc "zone:traffic"
@@ -1488,7 +1517,11 @@ function getSpeedLimit(tags, osmId){
     if(tags.maxspeed==='VN:rural')return{limit:80,source:'OSM VN:rural'};
   }
 
-  // Ưu tiên 3: Thông tư 31 theo loại đường + vùng
+  // Ưu tiên 3: học từ tốc độ thực tế trên đường này
+  const learned=learnedLimit(osmId);
+  if(learned)return{limit:learned.limit,source:`📊 Học từ ${learned.n} mẫu tốc độ`};
+
+  // Ưu tiên 4: Thông tư 31 theo loại đường + vùng
   const hw=tags.highway||'road';
   const limits=TT31[hw]||TT31['road'];
   const urban=isUrbanRoad(tags);
@@ -1529,6 +1562,13 @@ async function queryRoadSpeed(lat,lng){
     currentSpeedLimit=limit;
     currentRoadName=nameRoad;
     currentRoadType=highway;
+    currentOsmId=osmId;
+
+    // Đọc tên đường + giới hạn khi chuyển sang đường mới (rảnh tay khi lái)
+    if(nameRoad!==lastAnnouncedRoad&&mySpeed*3.6>10&&limit){
+      lastAnnouncedRoad=nameRoad;
+      speak(`Đường ${nameRoad}, giới hạn ${limit}`);
+    }
 
     // Cập nhật UI
     const bar=document.getElementById('speedLimitBar');
