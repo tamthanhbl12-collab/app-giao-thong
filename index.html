@@ -247,7 +247,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.0</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.1</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -727,7 +727,7 @@ function startGPS(){
     const sb=document.getElementById('hudSpeedBig');
     if(sb)sb.textContent=kmh;
     const badge=document.getElementById('hudSpeedBadge');
-    if(badge)badge.classList.toggle('over',currentSpeedLimit&&kmh>currentSpeedLimit+5);
+    if(badge)badge.classList.toggle('over',currentSpeedLimit&&kmh>currentSpeedLimit+4);
     document.getElementById('hudHeading').textContent=headingText(myHeading);
     document.getElementById('gpsStatus').textContent=`📍 ${myLat.toFixed(4)}, ${myLng.toFixed(4)}`;
     document.getElementById('gpsDot').className='hud-gps-dot ok';
@@ -1459,10 +1459,12 @@ function learnedLimit(osmId){
   const rec=learnedSpeeds[osmId];
   if(!rec||rec.samples.length<30)return null; // cần ≥30 mẫu (~30 giây chạy)
   const sorted=[...rec.samples].sort((a,b)=>a-b);
-  const p85=sorted[Math.floor(sorted.length*0.85)]; // tốc độ hành trình điển hình
-  // Quy về mốc giới hạn VN gần nhất
+  const p95=sorted[Math.floor(sorted.length*0.95)]; // tốc độ cao nhất hay chạy
+  // Kinh nghiệm VN: tài xế chạy tối đa = giới hạn + 4 (quá +5 là máy bắn tốc độ phạt)
+  // → đường 50 chạy tới 54, đường 60 chạy tới 64. Trừ 4 rồi quy về mốc gần nhất
+  const est=p95-4;
   let best=VN_LIMITS[0];
-  for(const v of VN_LIMITS){if(Math.abs(v-p85)<Math.abs(best-p85))best=v;}
+  for(const v of VN_LIMITS){if(Math.abs(v-est)<Math.abs(best-est))best=v;}
   return{limit:best,n:rec.samples.length};
 }
 
@@ -1590,10 +1592,10 @@ function checkSpeedLimit(kmh){
   const speedEl=document.getElementById('hudSpeed');
   const now=Date.now();
 
-  if(kmh>currentSpeedLimit+5){
-    // QUÁ TỐC ĐỘ
+  if(kmh>currentSpeedLimit+4){
+    // QUÁ NGƯỠNG PHẠT (máy bắn tốc độ phạt khi vượt quá giới hạn +4)
     if(badge){
-      badge.textContent=`⚠️ +${kmh-currentSpeedLimit} km/h`;
+      badge.textContent=`🚨 +${kmh-currentSpeedLimit} — BẮN TỐC ĐỘ!`;
       badge.style.background='rgba(248,81,73,.2)';
       badge.style.color='var(--red)';
       badge.style.borderColor='rgba(248,81,73,.4)';
@@ -1605,10 +1607,19 @@ function checkSpeedLimit(kmh){
       beep(600,0.08,0.3);
       setTimeout(()=>beep(600,0.08,0.3),120);
       setTimeout(()=>{
-        const over=kmh-currentSpeedLimit;
-        speak(`Cảnh báo quá tốc độ ${over} ki lô mét. Giới hạn ${currentSpeedLimit} ki lô mét một giờ`);
+        speak(`Giảm tốc độ! Đang ${kmh} trên đường ${currentSpeedLimit}, coi chừng bắn tốc độ`);
       },300);
     }
+  } else if(kmh>currentSpeedLimit){
+    // TRONG VÙNG DUNG SAI (+1 đến +4): chưa bị phạt nhưng sát ngưỡng
+    if(badge){
+      badge.textContent=`⚡ +${kmh-currentSpeedLimit} — sát ngưỡng`;
+      badge.style.background='rgba(240,136,62,.15)';
+      badge.style.color='var(--amber)';
+      badge.style.borderColor='rgba(240,136,62,.4)';
+    }
+    if(speedEl)speedEl.style.color='var(--amber)';
+    speedWarnCooldown=0;
   } else {
     // AN TOÀN
     if(badge){
