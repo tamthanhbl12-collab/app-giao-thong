@@ -251,7 +251,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.3</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.4</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -287,7 +287,7 @@ textarea{resize:none;min-height:60px}
     </div>
     <div style="text-align:right">
       <div id="weatherTemp" style="font-size:22px;font-weight:900;color:var(--amber)">--°</div>
-      <div style="font-size:10px;color:var(--muted)">Bạc Liêu</div>
+      <div id="weatherPlace" style="font-size:10px;color:var(--muted)">--</div>
     </div>
   </div>
 
@@ -743,6 +743,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
     autoDetectTrafficLight(myLat,myLng,kmh);
 
     checkLoadWeather();
+    checkAreaChange();
     if(kmh>5)queryRoadSpeed(myLat,myLng);
     learnSpeedSample(kmh);
     checkSpeedLimit(kmh);
@@ -2170,21 +2171,19 @@ async function fetchWeather(lat,lng){
   }
 }
 
-// Chu kỳ hiện/ẩn thời tiết: hiện 3 phút, ẩn, lặp lại mỗi 30 phút
-// → nhường không gian màn hình cho hành trình
+// Thời tiết: mở app hiện 10 giây rồi ẩn;
+// khi sang địa bàn mới (huyện/tỉnh khác) hiện lại 3 giây với thời tiết chỗ mới
 let weatherLoaded=false;
-const WEATHER_SHOW_MS=3*60*1000;
-const WEATHER_CYCLE_MS=30*60*1000;
 let weatherHideTimer=null;
 
-function showWeatherCycle(){
+function showWeatherBar(durationMs){
   const bar=document.getElementById('weatherBar');
   if(!bar)return;
   if(myLat)fetchWeather(myLat,myLng); // làm mới dữ liệu trước khi hiện
   bar.classList.remove('wb-hidden');
   if(hudMap)setTimeout(()=>hudMap.invalidateSize(),550);
   if(weatherHideTimer)clearTimeout(weatherHideTimer);
-  weatherHideTimer=setTimeout(hideWeatherBar,WEATHER_SHOW_MS);
+  weatherHideTimer=setTimeout(hideWeatherBar,durationMs);
 }
 function hideWeatherBar(){
   const bar=document.getElementById('weatherBar');
@@ -2196,8 +2195,38 @@ function hideWeatherBar(){
 function checkLoadWeather(){
   if(!myLat||weatherLoaded)return;
   weatherLoaded=true;
-  showWeatherCycle(); // hiện ngay lần đầu có GPS
-  setInterval(showWeatherCycle,WEATHER_CYCLE_MS);
+  showWeatherBar(10000); // mở app: hiện 10 giây rồi ẩn
+}
+
+// ═══ PHÁT HIỆN CHUYỂN ĐỊA BÀN (Nominatim reverse, mỗi 3km kiểm tra 1 lần) ═══
+let lastGeoCheck={lat:null,lng:null};
+let currentArea='';
+let areaCheckBusy=false;
+
+async function checkAreaChange(){
+  if(!myLat||areaCheckBusy)return;
+  if(lastGeoCheck.lat&&dist(myLat,myLng,lastGeoCheck.lat,lastGeoCheck.lng)<3000)return;
+  areaCheckBusy=true;
+  lastGeoCheck={lat:myLat,lng:myLng};
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${myLat}&lon=${myLng}&format=json&zoom=10&accept-language=vi`,{signal:AbortSignal.timeout(8000)});
+    const d=await res.json();
+    const a=d.address||{};
+    const area=a.city||a.town||a.county||a.state_district||a.state||'';
+    if(area&&area!==currentArea){
+      const first=!currentArea;
+      currentArea=area;
+      const label=document.getElementById('weatherPlace');
+      if(label)label.textContent=area;
+      if(!first){
+        // Sang địa bàn mới → hiện thời tiết mới 3 giây + đọc tên
+        showWeatherBar(3000);
+        speak(`Đã tới ${area}`);
+        showToast(`📍 ${area}`);
+      }
+    }
+  }catch(e){}
+  areaCheckBusy=false;
 }
 
 // ═══════════════ QUẢN LÝ XE ═══════════════
