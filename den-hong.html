@@ -26,10 +26,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .drive-btn.active{background:var(--red);color:#fff;animation:pulse-btn 1.5s infinite}
 @keyframes pulse-btn{0%,100%{opacity:1}50%{opacity:.7}}
 
-/* TABS */
-.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
-.tab{flex:1;padding:9px 2px;text-align:center;font-size:11px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;font-weight:600}
-.tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+/* TOP BAR: nhập điểm đến + menu ⋮ */
+.topbar{display:flex;gap:8px;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 10px;flex-shrink:0;position:relative}
+.topbar input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:9px 12px;outline:none;font-family:inherit;min-width:0}
+.topbar input:focus{border-color:var(--blue)}
+.tb-go{padding:9px 14px;border-radius:10px;border:none;background:var(--blue);color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0}
+.tb-menu{width:40px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:20px;font-weight:900;cursor:pointer;flex-shrink:0;line-height:1}
+#menuDropdown{display:none;position:absolute;top:calc(100% + 4px);right:10px;z-index:5000;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6);overflow:hidden;min-width:190px}
+#menuDropdown.open{display:block}
+.menu-item{padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;border-bottom:1px solid var(--border)}
+.menu-item:last-child{border-bottom:none}
+.menu-item:active{background:var(--surface2)}
 
 .panel{display:none;flex-direction:column;flex:1;overflow:hidden}
 .panel.active{display:flex}
@@ -76,7 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 /* NAV PANEL — điều hướng trong HUD */
 .nav-panel{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px}
-.nav-info{display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-top:8px}
+.nav-info{display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin:8px 14px 0}
 .nav-info.show{display:block}
 .nav-dest{font-size:12px;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-stats{display:flex;align-items:center;gap:10px}
@@ -251,7 +258,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.4</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.5</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -265,14 +272,20 @@ textarea{resize:none;min-height:60px}
   </div>
 </div>
 
-<!-- TABS -->
-<div class="tabs" id="mainTabs">
-  <div class="tab active" onclick="switchTab('hud')">🚗 HUD</div>
-  <div class="tab" onclick="switchTab('map')">🗺️ Bản đồ</div>
-  <div class="tab" onclick="switchTab('list')">📋 Danh sách</div>
-  <div class="tab" onclick="switchTab('add')">➕ Thêm</div>
-  <div class="tab" onclick="switchTab('cam')">📷 70mai</div>
-  <div class="tab" onclick="switchTab('xe')">🚛 Xe</div>
+<!-- TOP BAR: ô nhập điểm đến + menu ⋮ -->
+<div class="topbar">
+  <input type="text" id="navDest" placeholder="🔍 Nhập điểm đến: tên, tọa độ, link Google Maps" onkeydown="if(event.key==='Enter')startNav()">
+  <button class="tb-go" onclick="startNav()">Đi ▶</button>
+  <button class="tb-menu" id="menuBtn" onclick="toggleMenu()" title="Menu">⋮</button>
+  <!-- Dropdown menu -->
+  <div id="menuDropdown">
+    <div class="menu-item" onclick="menuGo('hud')">🚗 HUD lái xe</div>
+    <div class="menu-item" onclick="menuGo('map')">🗺️ Bản đồ</div>
+    <div class="menu-item" onclick="menuGo('list')">📋 Danh sách điểm</div>
+    <div class="menu-item" onclick="menuGo('add')">➕ Thêm điểm</div>
+    <div class="menu-item" onclick="menuGo('cam')">📷 Camera 70mai</div>
+    <div class="menu-item" onclick="menuGo('xe')">🚛 Quản lý xe</div>
+  </div>
 </div>
 
 <!-- ══════════ HUD PANEL ══════════ -->
@@ -304,13 +317,8 @@ textarea{resize:none;min-height:60px}
     </div>
   </div>
 
-  <!-- Navigation Panel — ô nhập điểm đến ở TRÊN cho dễ thấy -->
-  <div class="nav-panel" id="navPanel">
-    <div style="display:flex;gap:8px">
-      <input type="text" id="navDest" placeholder="🔍 Nhập điểm đến: tên, tọa độ, link Google Maps" onkeydown="if(event.key==='Enter')startNav()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:8px 12px;outline:none;font-family:inherit;min-width:0">
-      <button onclick="startNav()" style="padding:8px 14px;border-radius:10px;border:none;background:var(--blue);color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">Đi ▶</button>
-    </div>
-    <div class="nav-info" id="navInfo">
+  <!-- Thông tin lộ trình (hiện khi có điểm đến) -->
+  <div class="nav-info" id="navInfo">
       <div class="nav-dest" id="navDestName">--</div>
       <div id="navToll" style="font-size:11px;color:var(--amber);margin-bottom:6px;display:none"></div>
       <div class="nav-stats">
@@ -320,7 +328,6 @@ textarea{resize:none;min-height:60px}
         <div class="nav-stat"><div class="nav-stat-val" id="navETA">--</div><div class="nav-stat-lbl">phút</div></div>
         <button class="nav-cancel" onclick="cancelNav()">✕ Hủy</button>
       </div>
-    </div>
   </div>
   <!-- Main display — thẻ đèn khi lái xe -->
   <div class="hud-main" id="hudMain"></div>
@@ -1672,6 +1679,7 @@ function parseGoogleMapsLink(q){
 
 async function setNavDest(lat,lng,name){
   navDest={lat,lng,name};
+  switchTab('hud'); // nhập điểm đến từ tab nào cũng quay về HUD
   if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
   document.getElementById('navDestName').textContent='📍 '+name;
   document.getElementById('navInfo').classList.add('show');
@@ -2514,10 +2522,22 @@ function flashStatsBar(){
   },4000);
 }
 
+// ═══ MENU ⋮ ═══
+function toggleMenu(force){
+  const m=document.getElementById('menuDropdown');
+  if(typeof force==='boolean')m.classList.toggle('open',force);
+  else m.classList.toggle('open');
+}
+function menuGo(tab){toggleMenu(false);switchTab(tab);}
+// Bấm ra ngoài thì đóng menu
+document.addEventListener('click',e=>{
+  const m=document.getElementById('menuDropdown');
+  if(m&&m.classList.contains('open')&&!e.target.closest('.tb-menu')&&!e.target.closest('#menuDropdown'))m.classList.remove('open');
+});
+
 function switchTab(tab){
   setStatsBarForTab(tab);
-  ['hud','map','list','add','cam','xe'].forEach((t,i)=>{
-    document.querySelectorAll('.tab')[i].classList.toggle('active',t===tab);
+  ['hud','map','list','add','cam','xe'].forEach(t=>{
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
   });
   if(tab==='list')renderList();
