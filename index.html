@@ -215,6 +215,7 @@ textarea{resize:none;min-height:60px}
 
 /* STATS */
 .stats-bar{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+.stats-bar.sb-hidden{display:none} /* ẩn ở tab HUD/Bản đồ để nhường chỗ bản đồ */
 .stat-item{flex:1;text-align:center;padding:7px 4px;border-right:1px solid var(--border)}
 .stat-item:last-child{border-right:none}
 .stat-num{font-size:15px;font-weight:700;color:var(--amber)}
@@ -247,7 +248,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.1</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.2</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -493,7 +494,7 @@ textarea{resize:none;min-height:60px}
   </div>
 </div>
 
-<div class="stats-bar">
+<div class="stats-bar sb-hidden" id="statsBar">
   <div class="stat-item"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Tổng điểm</div></div>
   <div class="stat-item"><div class="stat-num" id="statNearby" style="color:var(--red)">0</div><div class="stat-label">Phía trước</div></div>
   <div class="stat-item"><div class="stat-num" id="statToday">0</div><div class="stat-label">Hôm nay</div></div>
@@ -1202,6 +1203,7 @@ function quickAddGPS(){
 function savePoint(p){
   points.push(p);localStorage.setItem(SK,JSON.stringify(points));
   renderMarkers();renderList();updateStats();
+  flashStatsBar();
 }
 
 // ═══════════════ 70MAI EXIF ═══════════════
@@ -1315,7 +1317,7 @@ async function importJsonPoints(file){
     });
     if(count>0){
       localStorage.setItem(SK,JSON.stringify(points));
-      renderMarkers();updateStats();
+      renderMarkers();updateStats();flashStatsBar();
       showToast(`✅ Đã import ${count} điểm ngã tư!`);
     } else {
       showToast('⚠️ Không có điểm mới (đã tồn tại hết)');
@@ -2475,7 +2477,29 @@ function updateStats(){
 }
 
 // ═══════════════ TABS ═══════════════
+// Thanh thống kê: ẩn ở HUD/Bản đồ, hiện ở các tab còn lại
+let statsFlashTimer=null;
+function setStatsBarForTab(tab){
+  const sb=document.getElementById('statsBar');
+  if(sb)sb.classList.toggle('sb-hidden',tab==='hud'||tab==='map');
+}
+// Loé lên 4 giây khi có điểm mới (đang ở tab bản đồ vẫn biết đã lưu)
+function flashStatsBar(){
+  const sb=document.getElementById('statsBar');
+  if(!sb||!sb.classList.contains('sb-hidden'))return;
+  sb.classList.remove('sb-hidden');
+  if(hudMap)setTimeout(()=>hudMap.invalidateSize(),80);
+  if(statsFlashTimer)clearTimeout(statsFlashTimer);
+  statsFlashTimer=setTimeout(()=>{
+    const onMapTab=document.getElementById('panel-hud').classList.contains('active')||document.getElementById('panel-map').classList.contains('active');
+    if(onMapTab)sb.classList.add('sb-hidden');
+    if(hudMap)setTimeout(()=>hudMap.invalidateSize(),80);
+    if(map)setTimeout(()=>map.invalidateSize(),80);
+  },4000);
+}
+
 function switchTab(tab){
+  setStatsBarForTab(tab);
   ['hud','map','list','add','cam','xe'].forEach((t,i)=>{
     document.querySelectorAll('.tab')[i].classList.toggle('active',t===tab);
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
