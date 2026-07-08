@@ -258,7 +258,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.8</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.9</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -903,15 +903,68 @@ async function checkIntersectionNearby(lat,lng,stopSec){
     pendingAutoPoint={lat,lng,stopSec:Math.round(stopSec),confidence};
     const banner=document.getElementById('autoDetectBanner');
     document.getElementById('autoDetectDesc').textContent=
-      `Dừng ${Math.round(stopSec)}s · ${confidence}`;
+      `Dừng ${Math.round(stopSec)}s · ${confidence} · 🎙 Nói CÓ hoặc KHÔNG`;
     if(banner){banner.style.display='block';switchTab('map');}
+    // Hỏi bằng loa + nghe câu trả lời (rảnh tay, không cần chạm máy)
+    speak('Phát hiện đèn giao thông. Nói CÓ để lưu, hoặc KHÔNG để bỏ qua');
+    startVoiceAnswer();
     setTimeout(()=>{
-      if(pendingAutoPoint){pendingAutoPoint=null;if(banner)banner.style.display='none';}
+      if(pendingAutoPoint){pendingAutoPoint=null;stopVoiceAnswer();if(banner)banner.style.display='none';}
     },25000);
   }
 }
 
+// ═══════════════ TRẢ LỜI BẰNG GIỌNG NÓI ═══════════════
+// Tới đèn đỏ app hỏi → nói "CÓ" / "KHÔNG" thay vì bấm tay
+// (tránh camera phạt nguội bắt lỗi dùng điện thoại khi lái xe)
+let voiceRec=null,voiceTries=0;
+
+// Phân tích câu trả lời: ưu tiên bắt từ chối trước ("không lưu" phải hiểu là KHÔNG)
+function matchVoiceAnswer(text){
+  const t=' '+text.toLowerCase().trim()+' ';
+  const NO=['không','khong','bỏ qua','bo qua','thôi','thoi',' no '];
+  const YES=['có','co ','lưu','luu','đồng ý','dong y',' ok',' oke','yes'];
+  if(NO.some(k=>t.includes(k)))return 'no';
+  if(YES.some(k=>t.includes(k)))return 'yes';
+  return null;
+}
+
+function startVoiceAnswer(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR)return; // trình duyệt không hỗ trợ → vẫn bấm tay được
+  stopVoiceAnswer();
+  voiceTries=0;
+  const listen=()=>{
+    if(!pendingAutoPoint||voiceTries>=4)return;
+    voiceTries++;
+    try{
+      voiceRec=new SR();
+      voiceRec.lang='vi-VN';
+      voiceRec.interimResults=false;
+      voiceRec.maxAlternatives=3;
+      voiceRec.onresult=e=>{
+        let text='';
+        for(const res of e.results){for(const alt of res){text+=' '+alt.transcript;}}
+        const ans=matchVoiceAnswer(text);
+        if(ans==='yes')confirmAutoPoint(true);
+        else if(ans==='no')confirmAutoPoint(false);
+      };
+      // Kết thúc 1 lượt nghe mà chưa có câu trả lời → nghe tiếp (tối đa 4 lượt)
+      voiceRec.onend=()=>{if(pendingAutoPoint)setTimeout(listen,300);};
+      voiceRec.onerror=()=>{};
+      voiceRec.start();
+    }catch(e){}
+  };
+  // Đợi loa đọc xong câu hỏi rồi mới bật mic (tránh mic nghe nhầm chính app)
+  setTimeout(listen,3500);
+}
+function stopVoiceAnswer(){
+  if(voiceRec){try{voiceRec.onend=null;voiceRec.onresult=null;voiceRec.stop();}catch(e){}voiceRec=null;}
+}
+
 function confirmAutoPoint(save){
+  stopVoiceAnswer();
+  speak(save?'Đã lưu điểm đèn':'Đã bỏ qua');
   const banner=document.getElementById('autoDetectBanner');
   if(banner)banner.style.display='none';
   if(save&&pendingAutoPoint){
