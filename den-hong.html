@@ -258,7 +258,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.5</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.6</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -552,6 +552,7 @@ let lastWarnTime=0;
 // Map
 let map=null,markers=[],myMarker=null;
 let hudMap=null,hudMyMarker=null,hudNavMarker=null,hudPolyline=null,hudLightMarkers=[],hudFollow=true;
+let hudReturnTimer=null,mapReturnTimer=null; // tự quay về vị trí sau 5s kéo bản đồ
 
 // Intervals
 let hudTick=null,listTick=null;
@@ -1057,6 +1058,15 @@ function initMap(){
   // Zoom control góc trái dưới
   L.control.zoom({position:'bottomleft'}).addTo(map);
 
+  // Kéo bản đồ ra chỗ khác → 5 giây sau tự quay về vị trí mũi tên
+  map.on('dragstart',()=>{if(mapReturnTimer)clearTimeout(mapReturnTimer);});
+  map.on('dragend',()=>{
+    if(mapReturnTimer)clearTimeout(mapReturnTimer);
+    mapReturnTimer=setTimeout(()=>{
+      if(myLat)map.setView([myLat,myLng],map.getZoom());
+    },5000);
+  });
+
   // Click bản đồ: chỉ điền tọa độ, KHÔNG chuyển tab (tránh nhầm khi lái)
   map.on('click',function(e){
     document.getElementById('mLat').value=e.latlng.lat.toFixed(6);
@@ -1073,8 +1083,19 @@ function initHudMap(){
   if(hudMap||!document.getElementById('hudMap'))return;
   hudMap=L.map('hudMap',{zoomControl:false,attributionControl:false}).setView([9.2845,105.7243],16);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(hudMap);
-  // Kéo bản đồ → tắt chế độ bám theo
-  hudMap.on('dragstart',()=>{hudFollow=false;updateHudFollowBtn();});
+  // Kéo bản đồ → tạm tắt bám theo, 5 giây sau tự quay về vị trí mũi tên
+  hudMap.on('dragstart',()=>{
+    hudFollow=false;updateHudFollowBtn();
+    if(hudReturnTimer)clearTimeout(hudReturnTimer);
+  });
+  hudMap.on('dragend',()=>{
+    if(hudReturnTimer)clearTimeout(hudReturnTimer);
+    hudReturnTimer=setTimeout(()=>{
+      if(!myLat)return;
+      hudFollow=true;updateHudFollowBtn();
+      hudMap.setView([myLat,myLng],hudMap.getZoom());
+    },5000);
+  });
   updateSoundBtn();
 }
 function updateHudFollowBtn(){
