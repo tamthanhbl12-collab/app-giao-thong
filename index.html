@@ -67,12 +67,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudFollowBtn{position:absolute;bottom:12px;right:12px;z-index:500;width:46px;height:46px;border-radius:50%;border:1px solid var(--border);background:var(--blue);color:#000;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;transition:all .2s}
 #hudFollowBtn.off{background:var(--surface);color:var(--muted)}
 
-/* Đồng hồ tốc độ tròn trên bản đồ (kiểu VietMap) */
-#hudSpeedBadge{position:absolute;top:12px;left:12px;z-index:500;width:76px;height:76px;border-radius:50%;background:rgba(13,17,23,.92);border:3px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.45)}
-#hudSpeedBig{font-size:28px;font-weight:900;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
-.hsb-unit{font-size:10px;color:var(--muted);margin-top:2px}
-#hudSpeedBadge{transition:border-color .6s ease}
-#hudSpeedBadge.over{border-color:var(--red);animation:pulse-btn .8s infinite}
+/* Đồng hồ tốc độ tròn trên bản đồ (kiểu VietMap — vạch sáng dần theo tốc độ) */
+#hudSpeedBadge{position:absolute;top:12px;left:12px;z-index:500;width:88px;height:88px;border-radius:50%;background:radial-gradient(circle at 50% 32%,#1a2440,#0a0f1e);border:3px solid #1e2b45;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.5)}
+#hudGaugeTicks{position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px)}
+#hudSpeedBig{font-size:27px;font-weight:900;line-height:1;color:#fff;font-variant-numeric:tabular-nums;z-index:1}
+.hsb-unit{font-size:10px;color:var(--muted);margin-top:2px;z-index:1}
+#hudSpeedBadge.over{animation:pulse-btn .8s infinite}
 #hudSpeedBadge.over #hudSpeedBig{color:var(--red)}
 
 /* Biển giới hạn tốc độ + tên đường nổi trên bản đồ */
@@ -81,7 +81,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudLimitSign{width:46px;height:46px;border-radius:50%;background:#fff;border:4px solid #d32f2f;color:#000;font-size:17px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.4)}
 #hudLimitSign.danger{animation:pulse-btn .8s infinite}
 #hudRoadName{max-width:110px;background:rgba(13,17,23,.85);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 6px rgba(0,0,0,.3)}
-#hudSpeedBadge.warn{border-color:var(--amber)}
 
 /* Huy hiệu hướng đi + góc nón nổi trên bản đồ */
 #hudHeadingBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(13,17,23,.85);color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap}
@@ -267,7 +266,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.2</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.3</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -330,7 +329,10 @@ textarea{resize:none;min-height:60px}
   <!-- Mini map trong HUD -->
   <div id="hudMapWrap">
     <div id="hudMap"></div>
-    <div id="hudSpeedBadge"><div id="hudSpeedBig">0</div><div class="hsb-unit">km/h</div></div>
+    <div id="hudSpeedBadge">
+      <svg id="hudGaugeTicks" viewBox="0 0 84 84"></svg>
+      <div id="hudSpeedBig">0</div><div class="hsb-unit">km/h</div>
+    </div>
     <!-- Biển giới hạn + tên đường: tự cập nhật khi lái, bấm để sửa (lúc đậu xe) -->
     <div id="hudLimitWrap" onclick="editCurrentRoadLimit()" title="Bấm để sửa giới hạn">
       <div id="hudLimitSign">--</div>
@@ -725,6 +727,7 @@ function startGPS(){
     if(sb)sb.textContent=kmh;
     const badge=document.getElementById('hudSpeedBadge');
     if(badge)badge.classList.toggle('over',currentSpeedLimit&&kmh>currentSpeedLimit+4);
+    updateGaugeTicks(kmh);
     document.getElementById('hudHeading').textContent=headingText(myHeading);
     document.getElementById('gpsStatus').textContent=`📍 ${myLat.toFixed(4)}, ${myLng.toFixed(4)}`;
     document.getElementById('gpsDot').className='hud-gps-dot ok';
@@ -1176,6 +1179,7 @@ function initHudMap(){
   if(hudMap||!document.getElementById('hudMap'))return;
   hudMap=L.map('hudMap',{zoomControl:false,attributionControl:false}).setView([9.2845,105.7243],16);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(hudMap);
+  initGaugeTicks();
   // Kéo bản đồ → tạm tắt bám theo, 5 giây sau tự quay về vị trí mũi tên
   hudMap.on('dragstart',()=>{
     hudFollow=false;updateHudFollowBtn();
@@ -1191,6 +1195,35 @@ function initHudMap(){
   });
   updateSoundBtn();
 }
+// ═══ VẠCH ĐỒNG HỒ TỐC ĐỘ (kiểu VietMap) ═══
+// 24 vạch xếp vòng cung 270° (kiểu đồng hồ ô tô), sáng dần theo tốc độ
+const GAUGE_TICKS=24;
+function initGaugeTicks(){
+  const svg=document.getElementById('hudGaugeTicks');
+  if(!svg||svg.childNodes.length)return;
+  let s='';
+  for(let i=0;i<GAUGE_TICKS;i++){
+    const a=135+i*(270/(GAUGE_TICKS-1)); // bắt đầu góc dưới-trái, quét 270°
+    s+=`<line class="gt" x1="42" y1="5" x2="42" y2="12" transform="rotate(${a} 42 42)" stroke="#2a3550" stroke-width="3.5" stroke-linecap="round"/>`;
+  }
+  svg.innerHTML=s;
+}
+
+function updateGaugeTicks(kmh){
+  const svg=document.getElementById('hudGaugeTicks');
+  if(!svg)return;
+  const limit=currentSpeedLimit||60; // chưa biết đường thì lấy thang 60
+  const maxScale=limit+20;           // vạch đầy = giới hạn +20
+  const lit=Math.round(Math.max(0,Math.min(1,kmh/maxScale))*GAUGE_TICKS);
+  const over=currentSpeedLimit&&kmh>currentSpeedLimit+4;
+  const ratio=Math.max(0,Math.min(1,kmh/limit));
+  // Màu vạch: xanh lá → vàng → cam khi tiến sát giới hạn, đỏ đậm khi vượt ngưỡng phạt
+  const color=over?'#ff1744':`hsl(${Math.round(120*(1-ratio))},85%,52%)`;
+  svg.querySelectorAll('.gt').forEach((t,i)=>{
+    t.setAttribute('stroke',i<lit?color:'#2a3550');
+  });
+}
+
 function updateHudFollowBtn(){
   const b=document.getElementById('hudFollowBtn');
   if(b)b.classList.toggle('off',!hudFollow);
@@ -1707,14 +1740,6 @@ function checkSpeedLimit(kmh){
   if(gauge){
     gauge.classList.toggle('over',over);
     gauge.classList.toggle('warn',warn);
-    // Viền đổi màu DẦN theo tốc độ: xanh lá → vàng → cam khi tiến sát giới hạn, đỏ đậm khi vượt
-    if(over){
-      gauge.style.borderColor='#b71c1c'; // đỏ đậm
-    } else {
-      const ratio=Math.max(0,Math.min(1,kmh/currentSpeedLimit)); // 0 → 1 (chạm giới hạn)
-      const hue=Math.round(120*(1-ratio)); // 120=xanh lá → 0=đỏ
-      gauge.style.borderColor=`hsl(${hue},85%,48%)`;
-    }
   }
   if(sign)sign.classList.toggle('danger',over);
   if(speedEl)speedEl.style.color=over?'var(--red)':warn?'var(--amber)':'';
