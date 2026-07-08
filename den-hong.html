@@ -94,6 +94,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #zoneSign .zs-t{font-size:14px;font-weight:900;letter-spacing:.5px}
 #zoneSign .zs-s{font-size:10px;opacity:.85;margin-top:1px}
 
+/* Cảnh báo camera phạt nguội nổi trên bản đồ (theo khoảng cách) */
+#camWarn{display:none;position:absolute;top:112px;left:50%;transform:translateX(-50%);z-index:600;align-items:center;gap:10px;padding:9px 15px;border-radius:12px;background:#c62828;border:2px solid #fff;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#camWarn.show{display:flex;animation:pulse-btn 1.2s infinite}
+#camWarn .cw-ico{font-size:24px;line-height:1}
+#camWarn .cw-t{font-size:13px;font-weight:900;letter-spacing:.3px}
+#camWarn .cw-s{font-size:10px;opacity:.9;margin-top:1px}
+
 /* Nút loa trên bản đồ */
 #hudSoundBtn{position:absolute;top:12px;right:12px;z-index:500;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.95);font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 #hudSoundBtn.muted{opacity:.55}
@@ -284,7 +291,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.1</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.2</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -358,6 +365,7 @@ textarea{resize:none;min-height:60px}
     </div>
     <div id="hudHeadingBadge">🧭 <span id="hudHeading">--</span> · 👁 ±60°</div>
     <div id="zoneSign"></div>
+    <div id="camWarn"><div class="cw-ico">📷</div><div><div class="cw-t">CAMERA PHẠT NGUỘI</div><div class="cw-s"><span class="cw-dist">--</span> phía trước · giữ tốc độ</div></div></div>
     <button id="hudSoundBtn" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
     <button id="hudSearchBtn" onclick="openSearch()" title="Nhập điểm đến">🔍</button>
     <button id="hudMenuBtn" onclick="openFloatMenu()" title="Menu">⋮</button>
@@ -803,6 +811,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
     if(kmh>5)queryRoadSpeed(myLat,myLng);
     learnSpeedSample(kmh);
     detectZone(kmh);
+    updateCameraWarn();
     checkSpeedLimit(kmh);
     updateNavInfo();
     updateNavHUD();
@@ -1818,6 +1827,28 @@ function learnUrbanZone(lat,lng,name){
   urbanZones.push({lat:+lat.toFixed(5),lng:+lng.toFixed(5),name:name||''});
   if(urbanZones.length>500)urbanZones.shift();
   localStorage.setItem('urbanZones',JSON.stringify(urbanZones));
+}
+
+// ═══ CẢNH BÁO CAMERA PHẠT NGUỘI theo khoảng cách (ẩn sau khi vượt qua ~20m) ═══
+let camWarnState={id:null,minDist:1e9,announced:false};
+function isCameraPoint(p){return /📷|camera/i.test((p.name||'')+' '+(p.note||''));}
+function updateCameraWarn(){
+  const el=document.getElementById('camWarn');
+  if(!el||!myLat)return;
+  let best=null,bd=1e9;
+  points.forEach(p=>{if(!isCameraPoint(p))return;const d=dist(myLat,myLng,p.lat,p.lng);if(d<bd){bd=d;best=p;}});
+  if(best&&bd<350){
+    if(camWarnState.id!==best.id)camWarnState={id:best.id,minDist:bd,announced:false};
+    camWarnState.minDist=Math.min(camWarnState.minDist,bd);
+    // Đã tới gần (<40m) rồi đi qua khỏi >20m → ẩn
+    if(camWarnState.minDist<40&&bd>camWarnState.minDist+20){el.classList.remove('show');return;}
+    el.classList.add('show');
+    el.querySelector('.cw-dist').textContent=Math.round(bd)+'m';
+    if(!camWarnState.announced&&bd<220){camWarnState.announced=true;speak('Chú ý, sắp tới camera phạt nguội, kiểm tra tốc độ');}
+  } else {
+    el.classList.remove('show');
+    camWarnState={id:null,minDist:1e9,announced:false};
+  }
 }
 
 function showZoneSign(mode,areaName){
