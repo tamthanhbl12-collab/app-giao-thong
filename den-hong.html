@@ -258,7 +258,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.7</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v6.8</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -2632,6 +2632,33 @@ function showToast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2500);
 }
+
+// ═══════════════ DỮ LIỆU CÓ SẴN TRONG APP ═══════════════
+// Các điểm đèn/biển do Claude nhập từ ảnh + định vị mà user gửi.
+// Mở app là tự có, không cần nhập tay. Mỗi điểm có seedId riêng —
+// đã thêm 1 lần (hoặc user đã xóa) thì không thêm lại.
+const SEED_POINTS=[
+  // Mẫu: {seedId:'bl-001',name:'Ngã tư Trần Phú – Lê Lợi',addr:'TP Bạc Liêu',lat:9.2850,lng:105.7240,type:'Đèn bình thường',note:'Nhập từ ảnh',cycle:null,cycleAnchor:null},
+];
+
+(function mergeSeedPoints(){
+  try{
+    const applied=JSON.parse(localStorage.getItem('seedApplied')||'[]');
+    let added=0;
+    SEED_POINTS.forEach(s=>{
+      if(applied.includes(s.seedId))return; // đã thêm rồi (kể cả user đã xóa)
+      applied.push(s.seedId);
+      if(points.some(p=>dist(p.lat,p.lng,s.lat,s.lng)<30))return; // trùng điểm có sẵn
+      points.push({...s,id:Date.now()+added,time:Date.now()});
+      added++;
+    });
+    if(added>0){
+      localStorage.setItem(SK,JSON.stringify(points));
+      showToast(`📦 Đã thêm ${added} điểm dữ liệu có sẵn`);
+    }
+    if(SEED_POINTS.length)localStorage.setItem('seedApplied',JSON.stringify(applied));
+  }catch(e){}
+})();
 
 updateStats();
 
