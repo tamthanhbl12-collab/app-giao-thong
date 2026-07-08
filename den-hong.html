@@ -71,7 +71,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudSpeedBadge{position:absolute;top:12px;left:12px;z-index:500;width:76px;height:76px;border-radius:50%;background:rgba(13,17,23,.92);border:3px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.45)}
 #hudSpeedBig{font-size:28px;font-weight:900;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
 .hsb-unit{font-size:10px;color:var(--muted);margin-top:2px}
-#hudSpeedBadge.over{border-color:var(--red)}
+#hudSpeedBadge{transition:border-color .6s ease}
+#hudSpeedBadge.over{border-color:var(--red);animation:pulse-btn .8s infinite}
 #hudSpeedBadge.over #hudSpeedBig{color:var(--red)}
 
 /* Biển giới hạn tốc độ + tên đường nổi trên bản đồ */
@@ -266,7 +267,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.1</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.2</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -1095,7 +1096,45 @@ function startHudTick(){
   hudTick=setInterval(()=>{
     if(myLat&&driveMode)runHUD();
     tickListClocks();
+    updateCycleCountdown();
   },1000);
+}
+
+// ═══ ĐẾM NGƯỢC PHA ĐÈN TẠI ĐIỂM SẮP QUA — nổi trên bản đồ, cập nhật mỗi giây ═══
+let hudCycleMarker=null,mapCycleMarker=null;
+
+function removeCycleMarkers(){
+  if(hudCycleMarker&&hudMap){hudMap.removeLayer(hudCycleMarker);hudCycleMarker=null;}
+  if(mapCycleMarker&&map){map.removeLayer(mapCycleMarker);mapCycleMarker=null;}
+}
+
+function updateCycleCountdown(){
+  if(!myLat){removeCycleMarkers();return;}
+  // Tìm điểm đèn CÓ CHU KỲ gần nhất trong 1km
+  let best=null,bestD=1e9;
+  points.forEach(p=>{
+    if(!p.cycle||!p.cycleAnchor)return;
+    const d=dist(myLat,myLng,p.lat,p.lng);
+    if(d<1000&&d<bestD){best=p;bestD=d;}
+  });
+  if(!best){removeCycleMarkers();return;}
+  const cur=getCurrentPhase(best);
+  if(!cur){removeCycleMarkers();return;}
+
+  const color=cur.phase==='green'?'#3fb950':cur.phase==='yellow'?'#f5c518':'#f85149';
+  const emoji=cur.phase==='green'?'🟢':cur.phase==='yellow'?'🟡':'🔴';
+  const textColor=cur.phase==='yellow'?'#000':'#fff';
+  const html=`<div style="background:${color};color:${textColor};font-weight:900;font-size:14px;padding:3px 9px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);white-space:nowrap;font-variant-numeric:tabular-nums">${emoji} ${cur.remaining}s</div>`;
+  const icon=L.divIcon({className:'',html,iconSize:[64,28],iconAnchor:[32,44]}); // nổi phía trên marker đèn
+
+  if(hudMap){
+    if(!hudCycleMarker)hudCycleMarker=L.marker([best.lat,best.lng],{icon,zIndexOffset:900,interactive:false}).addTo(hudMap);
+    else{hudCycleMarker.setLatLng([best.lat,best.lng]);hudCycleMarker.setIcon(icon);}
+  }
+  if(map){
+    if(!mapCycleMarker)mapCycleMarker=L.marker([best.lat,best.lng],{icon,zIndexOffset:900,interactive:false}).addTo(map);
+    else{mapCycleMarker.setLatLng([best.lat,best.lng]);mapCycleMarker.setIcon(icon);}
+  }
 }
 
 // ═══════════════ MAP (Leaflet + OpenStreetMap) ═══════════════
@@ -1665,7 +1704,18 @@ function checkSpeedLimit(kmh){
   const over=kmh>currentSpeedLimit+4;   // quá ngưỡng phạt (bắn tốc độ)
   const warn=!over&&kmh>currentSpeedLimit; // vùng dung sai +1..+4
 
-  if(gauge){gauge.classList.toggle('over',over);gauge.classList.toggle('warn',warn);}
+  if(gauge){
+    gauge.classList.toggle('over',over);
+    gauge.classList.toggle('warn',warn);
+    // Viền đổi màu DẦN theo tốc độ: xanh lá → vàng → cam khi tiến sát giới hạn, đỏ đậm khi vượt
+    if(over){
+      gauge.style.borderColor='#b71c1c'; // đỏ đậm
+    } else {
+      const ratio=Math.max(0,Math.min(1,kmh/currentSpeedLimit)); // 0 → 1 (chạm giới hạn)
+      const hue=Math.round(120*(1-ratio)); // 120=xanh lá → 0=đỏ
+      gauge.style.borderColor=`hsl(${hue},85%,48%)`;
+    }
+  }
   if(sign)sign.classList.toggle('danger',over);
   if(speedEl)speedEl.style.color=over?'var(--red)':warn?'var(--amber)':'';
 
