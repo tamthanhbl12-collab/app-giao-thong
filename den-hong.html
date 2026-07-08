@@ -284,7 +284,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.0</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.1</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -2985,7 +2985,11 @@ function showToast(msg){
 // Mở app là tự có, không cần nhập tay. Mỗi điểm có seedId riêng —
 // đã thêm 1 lần (hoặc user đã xóa) thì không thêm lại.
 const SEED_POINTS=[
-  // Mẫu: {seedId:'bl-001',name:'Ngã tư Trần Phú – Lê Lợi',addr:'TP Bạc Liêu',lat:9.2850,lng:105.7240,type:'Đèn bình thường',note:'Nhập từ ảnh',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-001',name:'Ngã 3 Cao Văn Lầu – Ninh Bình',addr:'TP Bạc Liêu',lat:9.266814,lng:105.728292,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-002',name:'Ngã Trần Huỳnh – Trần Phú',addr:'TP Bạc Liêu',lat:9.293968,lng:105.721569,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-003',name:'Ngã Trần Huỳnh – Võ Thị Sáu 📷',addr:'TP Bạc Liêu',lat:9.291253,lng:105.713930,type:'Đèn giao thông',note:'📷 Có camera phạt nguội',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-004',name:'Ngã 4 23 Tháng 8 – Trần Phú – Tôn Đức Thắng 📷',addr:'TP Bạc Liêu',lat:9.298775,lng:105.720372,type:'Đèn giao thông',note:'📷 Có camera phạt nguội',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-005',name:'Ngã 4 Trần Huỳnh – Lê Duẩn',addr:'TP Bạc Liêu',lat:9.296472,lng:105.727214,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
 ];
 
 (function mergeSeedPoints(){
