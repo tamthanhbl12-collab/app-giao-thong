@@ -89,6 +89,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudSoundBtn{position:absolute;top:12px;right:12px;z-index:500;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.95);font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 #hudSoundBtn.muted{opacity:.55}
 
+/* ẨN HEADER + THANH NHẬP mặc định — hiện lại bằng 🔍/⋮ hoặc chạm 2 lần */
+body.chrome-off .header,body.chrome-off .topbar{display:none}
+#hudSearchBtn,#hudMenuBtn{position:absolute;right:12px;z-index:500;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.95);color:#000;font-size:20px;font-weight:900;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
+#hudSearchBtn{top:66px}
+#hudMenuBtn{top:120px}
+/* Nút Lái xe nổi (header ẩn nên cần lối tắt) */
+#hudDriveFab{position:absolute;bottom:12px;left:12px;z-index:500;width:54px;height:54px;border-radius:50%;border:none;background:var(--green);font-size:24px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+#hudDriveFab.active{background:var(--red);animation:pulse-btn 1.5s infinite}
+
 /* NAV PANEL — điều hướng trong HUD */
 .nav-panel{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px}
 .nav-info{display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin:8px 14px 0}
@@ -266,7 +275,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.5</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.6</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -340,6 +349,9 @@ textarea{resize:none;min-height:60px}
     </div>
     <div id="hudHeadingBadge">🧭 <span id="hudHeading">--</span> · 👁 ±60°</div>
     <button id="hudSoundBtn" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
+    <button id="hudSearchBtn" onclick="openSearch()" title="Nhập điểm đến">🔍</button>
+    <button id="hudMenuBtn" onclick="openFloatMenu()" title="Menu">⋮</button>
+    <button id="hudDriveFab" onclick="toggleDriveMode()" title="Chế độ lái xe">🚗</button>
     <button id="hudFollowBtn" onclick="hudCenterMe()" title="Bám theo vị trí">🎯</button>
   </div>
   <!-- Rain Forecast Bar -->
@@ -700,6 +712,9 @@ function toggleDriveMode(){
   const btn=document.getElementById('driveBtn');
   btn.textContent=driveMode?'⏹ Dừng':'🚗 Lái xe';
   btn.classList.toggle('active',driveMode);
+  // Đồng bộ nút lái xe nổi trên bản đồ
+  const fab=document.getElementById('hudDriveFab');
+  if(fab){fab.textContent=driveMode?'⏹':'🚗';fab.classList.toggle('active',driveMode);}
   if(driveMode){
     warnedIds.clear();
     showToast('🚗 Chế độ lái xe BẬT — App theo dõi phía trước');
@@ -1181,6 +1196,9 @@ function initHudMap(){
   hudMap=L.map('hudMap',{zoomControl:false,attributionControl:false}).setView([9.2845,105.7243],16);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(hudMap);
   initGaugeTicks();
+  // Chạm 2 lần vào bản đồ → hiện/ẩn header + thanh nhập (tắt zoom double-tap)
+  hudMap.doubleClickZoom.disable();
+  hudMap.on('dblclick',()=>toggleChrome());
   // Kéo bản đồ → tạm tắt bám theo, 5 giây sau tự quay về vị trí mũi tên
   hudMap.on('dragstart',()=>{
     hudFollow=false;updateHudFollowBtn();
@@ -1810,6 +1828,7 @@ function parseGoogleMapsLink(q){
 async function setNavDest(lat,lng,name){
   navDest={lat,lng,name};
   switchTab('hud'); // nhập điểm đến từ tab nào cũng quay về HUD
+  toggleChrome(false); // bắt đầu đi → ẩn thanh trên, nhường chỗ bản đồ
   if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
   document.getElementById('navDestName').textContent='📍 '+name;
   document.getElementById('navInfo').classList.add('show');
@@ -2804,6 +2823,24 @@ function flashStatsBar(){
   },4000);
 }
 
+// ═══ ẨN/HIỆN HEADER + THANH NHẬP (chrome) ═══
+function toggleChrome(force){
+  const show=(typeof force==='boolean')?force:document.body.classList.contains('chrome-off');
+  document.body.classList.toggle('chrome-off',!show);
+  if(hudMap)setTimeout(()=>hudMap.invalidateSize(),80);
+  if(map)setTimeout(()=>map.invalidateSize(),80);
+}
+// Nút 🔍 nổi: hiện thanh nhập + focus ô điểm đến
+function openSearch(){
+  toggleChrome(true);
+  setTimeout(()=>{const i=document.getElementById('navDest');if(i)i.focus();},120);
+}
+// Nút ⋮ nổi: hiện chrome + mở menu
+function openFloatMenu(){
+  toggleChrome(true);
+  setTimeout(()=>toggleMenu(true),50);
+}
+
 // ═══ MENU ⋮ ═══
 function toggleMenu(force){
   const m=document.getElementById('menuDropdown');
@@ -2819,6 +2856,7 @@ document.addEventListener('click',e=>{
 
 function switchTab(tab){
   setStatsBarForTab(tab);
+  if(tab!=='hud')toggleChrome(true); // các tab khác cần thanh trên để thao tác
   ['hud','map','list','add','cam','xe'].forEach(t=>{
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
   });
@@ -2867,6 +2905,10 @@ const SEED_POINTS=[
 })();
 
 updateStats();
+
+// Mặc định ẩn header + thanh nhập — bản đồ chiếm trọn màn hình
+// (hiện lại: nút 🔍/⋮ nổi hoặc chạm 2 lần vào bản đồ)
+document.body.classList.add('chrome-off');
 
 // ═══════════════ WAKE LOCK — Giữ màn hình sáng XUYÊN SUỐT ═══════════════
 let wakeLock=null;
