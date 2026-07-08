@@ -85,6 +85,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* Huy hiệu hướng đi + góc nón nổi trên bản đồ */
 #hudHeadingBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(13,17,23,.85);color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap}
 
+/* Biển "Khu dân cư" / "Hết khu dân cư" nổi giữa bản đồ */
+#zoneSign{display:none;position:absolute;top:64px;left:50%;transform:translateX(-50%) translateY(-8px);z-index:600;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.5);opacity:0;transition:opacity .4s,transform .4s}
+#zoneSign.show{display:flex;opacity:1;transform:translateX(-50%) translateY(0)}
+#zoneSign.zone-urban{background:#1565c0;border:2px solid #fff;color:#fff}
+#zoneSign.zone-rural{background:#eceff1;border:2px solid #90a4ae;color:#263238}
+#zoneSign .zs-ico{font-size:26px;line-height:1}
+#zoneSign .zs-t{font-size:14px;font-weight:900;letter-spacing:.5px}
+#zoneSign .zs-s{font-size:10px;opacity:.85;margin-top:1px}
+
 /* Nút loa trên bản đồ */
 #hudSoundBtn{position:absolute;top:12px;right:12px;z-index:500;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.95);font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 #hudSoundBtn.muted{opacity:.55}
@@ -275,7 +284,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.8</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.9</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -348,6 +357,7 @@ textarea{resize:none;min-height:60px}
       <div id="hudRoadName">--</div>
     </div>
     <div id="hudHeadingBadge">🧭 <span id="hudHeading">--</span> · 👁 ±60°</div>
+    <div id="zoneSign"></div>
     <button id="hudSoundBtn" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
     <button id="hudSearchBtn" onclick="openSearch()" title="Nhập điểm đến">🔍</button>
     <button id="hudMenuBtn" onclick="openFloatMenu()" title="Menu">⋮</button>
@@ -774,6 +784,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
     loadOsmLights();
     if(kmh>5)queryRoadSpeed(myLat,myLng);
     learnSpeedSample(kmh);
+    detectZone(kmh);
     checkSpeedLimit(kmh);
     updateNavInfo();
     updateNavHUD();
@@ -1639,6 +1650,9 @@ function learnedLimit(osmId){
 
 // Xác định vùng (urban/rural) từ tag OSM
 function isUrbanRoad(tags){
+  // Biển "khu dân cư" phát hiện từ hành vi lái xe đè lên tất cả
+  if(zoneOverride==='urban')return true;
+  if(zoneOverride==='rural')return false;
   if(tags['zone:traffic']==='VN:urban')return true;
   if(tags['zone:traffic']==='VN:rural')return false;
   if(tags['maxspeed:type']==='VN:urban')return true;
@@ -1710,34 +1724,96 @@ async function queryRoadSpeed(lat,lng){
       if(w.tags&&w.tags.maxspeed)best=w;
     }
 
-    const tags=best.tags||{};
-    const osmId=best.id;
-    const highway=tags.highway||'road';
-    const nameRoad=tags.name||tags['name:vi']||tags['ref']||highway;
-
-    // Lấy speed limit theo thứ tự ưu tiên
-    const {limit,source}=getSpeedLimit(tags,osmId);
-
-    currentSpeedLimit=limit;
-    currentRoadName=nameRoad;
-    currentRoadType=highway;
-    currentOsmId=osmId;
-
-    // Đọc tên đường + giới hạn khi chuyển sang đường mới (rảnh tay khi lái)
-    if(nameRoad!==lastAnnouncedRoad&&mySpeed*3.6>10&&limit){
-      lastAnnouncedRoad=nameRoad;
-      speak(`Đường ${nameRoad}, giới hạn ${limit}`);
-    }
-
-    // Cập nhật biển giới hạn nổi trên bản đồ
-    const wrap=document.getElementById('hudLimitWrap');
-    if(wrap){wrap.classList.add('show');wrap.dataset.osmId=osmId;wrap.title=`${source} · ${highway} — bấm để sửa`;}
-    const sign=document.getElementById('hudLimitSign');
-    if(sign)sign.textContent=limit;
-    const roadEl=document.getElementById('hudRoadName');
-    if(roadEl)roadEl.textContent=nameRoad;
-
+    lastRoadTags=best.tags||{};
+    lastRoadOsmId=best.id;
+    applySpeedLimit(lastRoadTags,lastRoadOsmId,true);
   }catch(e){}
+}
+
+// Áp dụng giới hạn + cập nhật biển trên bản đồ (dùng lại khi đổi khu dân cư)
+function applySpeedLimit(tags,osmId,announce){
+  const highway=tags.highway||'road';
+  const nameRoad=tags.name||tags['name:vi']||tags['ref']||highway;
+  const {limit,source}=getSpeedLimit(tags,osmId);
+
+  currentSpeedLimit=limit;
+  currentRoadName=nameRoad;
+  currentRoadType=highway;
+  currentOsmId=osmId;
+
+  if(announce&&nameRoad!==lastAnnouncedRoad&&mySpeed*3.6>10&&limit){
+    lastAnnouncedRoad=nameRoad;
+    speak(`Đường ${nameRoad}, giới hạn ${limit}`);
+  }
+
+  const wrap=document.getElementById('hudLimitWrap');
+  if(wrap){wrap.classList.add('show');wrap.dataset.osmId=osmId;wrap.title=`${source} · ${highway} — bấm để sửa`;}
+  const sign=document.getElementById('hudLimitSign');
+  if(sign)sign.textContent=limit;
+  const roadEl=document.getElementById('hudRoadName');
+  if(roadEl)roadEl.textContent=nameRoad;
+}
+
+// ═══════════════ TỰ PHÁT HIỆN KHU DÂN CƯ (từ hành vi lái + bản đồ) ═══════════════
+// Đang chạy nhanh rồi giảm & giữ tốc độ thấp + vùng đông dân → vào khu dân cư
+// Tăng tốc lại & giữ → hết khu dân cư. Học ranh giới để lần sau nhận ngay.
+let zoneOverride=null;               // 'urban' | 'rural' | null (đè lên phân loại đường)
+let lastRoadTags=null,lastRoadOsmId=null;
+let urbanZones=JSON.parse(localStorage.getItem('urbanZones')||'[]'); // [{lat,lng,name}]
+
+function medianSpeedWindow(fromMsAgo,toMsAgo){
+  const now=Date.now();
+  const s=speedHistory.filter(x=>{const a=now-x.t;return a>=toMsAgo&&a<=fromMsAgo;}).map(x=>x.spd).sort((a,b)=>a-b);
+  return s.length?s[Math.floor(s.length/2)]:null;
+}
+
+function detectZone(kmh){
+  if(!myLat)return;
+  const recent=medianSpeedWindow(15000,0);      // tốc độ giữ 0-15s gần đây
+  const earlier=medianSpeedWindow(40000,20000); // tốc độ 20-40s trước
+  // 1) Lần sau đi qua vùng đã học → nhận ngay dù chưa kịp phân tích tốc độ
+  const inLearned=urbanZones.find(z=>dist(myLat,myLng,z.lat,z.lng)<600);
+  if(inLearned&&zoneOverride!=='urban'){setZone('urban',inLearned.name);return;}
+  if(!inLearned&&zoneOverride==='urban'&&kmh>=75){setZone('rural');return;}
+  if(recent==null||earlier==null)return;
+  // 2) VÀO khu dân cư: đang chạy nhanh (≥72) → giảm còn ≤68 và giữ (chênh ≥18)
+  if(zoneOverride!=='urban'&&earlier>=72&&recent<=68&&(earlier-recent)>=18){
+    setZone('urban',currentArea);
+    learnUrbanZone(myLat,myLng,currentArea);
+  }
+  // 3) HẾT khu dân cư: đang trong KDC → tăng tốc lại ≥75 và giữ
+  else if(zoneOverride==='urban'&&recent>=75&&(recent-earlier)>=12){
+    setZone('rural');
+  }
+}
+
+function setZone(mode,areaName){
+  if(zoneOverride===mode)return;
+  zoneOverride=mode;
+  showZoneSign(mode,areaName);
+  speak(mode==='urban'?'Khu dân cư, giảm tốc độ':'Hết khu dân cư');
+  if(lastRoadTags)applySpeedLimit(lastRoadTags,lastRoadOsmId,false); // cập nhật giới hạn ngay
+}
+
+function learnUrbanZone(lat,lng,name){
+  if(urbanZones.some(z=>dist(z.lat,z.lng,lat,lng)<600))return;
+  urbanZones.push({lat:+lat.toFixed(5),lng:+lng.toFixed(5),name:name||''});
+  if(urbanZones.length>500)urbanZones.shift();
+  localStorage.setItem('urbanZones',JSON.stringify(urbanZones));
+}
+
+function showZoneSign(mode,areaName){
+  const el=document.getElementById('zoneSign');
+  if(!el)return;
+  if(mode==='urban'){
+    el.className='zone-urban show';
+    el.innerHTML=`<div class="zs-ico">🏘</div><div><div class="zs-t">KHU DÂN CƯ</div>${areaName?`<div class="zs-s">${areaName}</div>`:''}<div class="zs-s">Giảm tốc độ</div></div>`;
+  } else {
+    el.className='zone-rural show';
+    el.innerHTML=`<div class="zs-ico">🏞</div><div><div class="zs-t">HẾT KHU DÂN CƯ</div><div class="zs-s">Được tăng tốc độ</div></div>`;
+  }
+  clearTimeout(showZoneSign._t);
+  showZoneSign._t=setTimeout(()=>{el.classList.remove('show');},6000);
 }
 
 // Kiểm tra tốc độ và cảnh báo — thể hiện qua màu đồng hồ + biển trên bản đồ + giọng nói
