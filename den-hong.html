@@ -275,7 +275,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.7</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v7.8</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -1632,29 +1632,10 @@ function learnedLimit(osmId){
   return{limit:best,n:rec.samples.length};
 }
 
-// ═══ Giới hạn tốc độ theo Thông tư 31/2019/TT-BGTVT ═══
-// Phân 2 vùng: trong khu dân cư (urban) và ngoài (rural)
-// OSM dùng tag "highway" + "maxspeed:type" hoặc "zone:traffic"
-const TT31 = {
-  // [trong_kdân_cư, ngoài_kdân_cư]
-  motorway:      [null, 120],  // Cao tốc (không đi qua kdc)
-  motorway_link: [null, 80],
-  trunk:         [60,   100],  // Quốc lộ 4 làn trở lên
-  trunk_link:    [60,   80],
-  primary:       [60,   90],   // Quốc lộ 2 làn
-  primary_link:  [60,   70],
-  secondary:     [60,   70],   // Tỉnh lộ
-  secondary_link:[50,   60],
-  tertiary:      [50,   60],   // Huyện lộ
-  tertiary_link: [40,   50],
-  unclassified:  [40,   50],   // Đường chưa phân loại
-  residential:   [40,   null], // Đường đô thị/khu dân cư
-  living_street: [20,   null], // Ngõ hẻm
-  service:       [20,   20],   // Đường nội bộ
-  road:          [50,   60],   // Không rõ loại
-  track:         [30,   40],   // Đường đất/nông thôn
-  path:          [20,   20],
-};
+// ═══ Giới hạn tốc độ VN (Thông tư 31/2019) — quy tắc đơn giản theo vùng + dải phân cách cứng ═══
+// • Nội ô (khu dân cư): có dải phân cách cứng → 60 · không → 50
+// • Ngoài (quốc lộ):     có dải phân cách cứng → 90 · không → 80
+// (VN gần như không dùng mốc 70)
 
 // Xác định vùng (urban/rural) từ tag OSM
 function isUrbanRoad(tags){
@@ -1662,38 +1643,50 @@ function isUrbanRoad(tags){
   if(tags['zone:traffic']==='VN:rural')return false;
   if(tags['maxspeed:type']==='VN:urban')return true;
   if(tags['maxspeed:type']==='VN:rural')return false;
-  // Fallback: residential/living_street luôn là urban
   const hw=tags.highway||'';
-  if(['residential','living_street','service'].includes(hw))return true;
-  // primary/trunk thường là rural (quốc lộ)
-  if(['motorway','trunk','primary'].includes(hw))return false;
-  // Mặc định theo tên đường: có "phường/quận/thành phố" → urban
-  return false; // conservative default
+  // Đường trong đô thị/khu dân cư
+  if(['residential','living_street','service','unclassified','tertiary','tertiary_link','secondary','secondary_link','road'].includes(hw))return true;
+  // Quốc lộ/cao tốc → ngoài khu dân cư
+  if(['motorway','motorway_link','trunk','trunk_link','primary','primary_link'].includes(hw))return false;
+  return true; // mặc định coi là nội ô (giới hạn thấp hơn = an toàn hơn)
+}
+
+// Phát hiện DẢI PHÂN CÁCH CỨNG giữa đường từ tag OSM
+function hasHardDivider(tags){
+  if(tags.dual_carriageway==='yes')return true;
+  if(tags.divider&&tags.divider!=='no')return true;
+  if(tags.median&&tags.median!=='no')return true;
+  // Đường chính 1 chiều = 1 nhánh của đường đôi có dải phân cách giữa
+  const hw=tags.highway||'';
+  if(tags.oneway==='yes'&&['trunk','primary','secondary','tertiary'].includes(hw))return true;
+  // ≥4 làn ở VN gần như luôn có dải phân cách cứng
+  const lanes=parseInt(tags.lanes);
+  if(!isNaN(lanes)&&lanes>=4)return true;
+  return false;
 }
 
 function getSpeedLimit(tags, osmId){
-  // Ưu tiên 1: tùy chỉnh của anh
-  if(customLimits[osmId])return{limit:customLimits[osmId],source:'Tùy chỉnh'};
+  // Ưu tiên 1: bạn tự sửa tay (luôn thắng)
+  if(customLimits[osmId])return{limit:customLimits[osmId],source:'✏️ Bạn đã sửa'};
 
-  // Ưu tiên 2: tag maxspeed cụ thể từ OSM
+  // Ưu tiên 2: số maxspeed cụ thể có sẵn trong OSM
   if(tags.maxspeed){
     const ms=parseInt(tags.maxspeed);
-    if(!isNaN(ms))return{limit:ms,source:'OSM maxspeed'};
-    if(tags.maxspeed==='VN:urban')return{limit:50,source:'OSM VN:urban'};
-    if(tags.maxspeed==='VN:rural')return{limit:80,source:'OSM VN:rural'};
+    if(!isNaN(ms))return{limit:ms,source:'Biển báo (OSM)'};
   }
 
-  // Ưu tiên 3: học từ tốc độ thực tế trên đường này
-  const learned=learnedLimit(osmId);
-  if(learned)return{limit:learned.limit,source:`📊 Học từ ${learned.n} mẫu tốc độ`};
+  const hw=tags.highway||'';
+  // Ngõ hẻm / đường nội bộ
+  if(hw==='living_street')return{limit:30,source:'Ngõ/hẻm'};
+  if(hw==='service')return{limit:30,source:'Đường nội bộ'};
 
-  // Ưu tiên 4: Thông tư 31 theo loại đường + vùng
-  const hw=tags.highway||'road';
-  const limits=TT31[hw]||TT31['road'];
+  // Quy tắc VN: vùng + dải phân cách cứng
   const urban=isUrbanRoad(tags);
-  const limit=urban?(limits[0]||limits[1]):(limits[1]||limits[0]);
-  const zone=urban?'Khu dân cư':'Ngoài KDC';
-  return{limit,source:`TT31/${zone}`};
+  const divider=hasHardDivider(tags);
+  let limit,zone;
+  if(urban){limit=divider?60:50;zone=divider?'Nội ô · có dải phân cách':'Nội ô';}
+  else{limit=divider?90:80;zone=divider?'Quốc lộ · có dải phân cách':'Quốc lộ';}
+  return{limit,source:zone};
 }
 
 // Query Overpass lấy đường gần nhất + maxspeed
