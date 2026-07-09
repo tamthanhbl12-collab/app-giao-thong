@@ -291,7 +291,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.2</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.3</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -3021,7 +3021,20 @@ const SEED_POINTS=[
   {seedId:'bl-tl-003',name:'Ngã Trần Huỳnh – Võ Thị Sáu 📷',addr:'TP Bạc Liêu',lat:9.291253,lng:105.713930,type:'Đèn giao thông',note:'📷 Có camera phạt nguội',cycle:null,cycleAnchor:null},
   {seedId:'bl-tl-004',name:'Ngã 4 23 Tháng 8 – Trần Phú – Tôn Đức Thắng 📷',addr:'TP Bạc Liêu',lat:9.298775,lng:105.720372,type:'Đèn giao thông',note:'📷 Có camera phạt nguội',cycle:null,cycleAnchor:null},
   {seedId:'bl-tl-005',name:'Ngã 4 Trần Huỳnh – Lê Duẩn',addr:'TP Bạc Liêu',lat:9.296472,lng:105.727214,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-006',name:'Ngã 4 Cao Văn Lầu – Nguyễn Thị Minh Khai',addr:'TP Bạc Liêu',lat:9.282225,lng:105.726410,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-007',name:'Ngã Quốc lộ 1 – ĐT.978',addr:'Bạc Liêu',lat:9.288269,lng:105.652023,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-008',name:'Ngã 4 CMT8 (Cách Mạng) – Lê Duẩn',addr:'TP Bạc Liêu',lat:9.291510,lng:105.730601,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-009',name:'Ngã 4 Trần Huỳnh – Tôn Đức Thắng',addr:'TP Bạc Liêu',lat:9.300696,lng:105.733557,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-010',name:'Ngã 4 Tôn Đức Thắng – Nguyễn Thái Học',addr:'TP Bạc Liêu',lat:9.301169,lng:105.730175,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-011',name:'Ngã 3 Quốc lộ 1 – ĐT.979 (Cầu Số 2)',addr:'Bạc Liêu',lat:9.270498,lng:105.589438,type:'Đèn giao thông',note:'',cycle:null,cycleAnchor:null},
+  {seedId:'bl-tl-012',name:'Ngã 3 23/8 – Võ Thị Sáu 📷',addr:'TP Bạc Liêu · gần Đài PTTH',lat:9.296161,lng:105.706863,type:'Đèn giao thông',note:'📷 Camera phạt nguội (gần Đài PTTH) · Đoạn 23/8 tới vòng xoay cầu sập: 50 km/h',cycle:null,cycleAnchor:null},
 ];
+
+// Giới hạn tốc độ đặt sẵn cho một số đường (OSM way id → km/h). VD: cả đường 23/8 = 50
+const SEED_LIMITS={
+  // Đường 23 Tháng 8 (toàn bộ đoạn) = 50 km/h
+  566237560:50,566237564:50,566344059:50,1123799952:50,1372581902:50,1372581903:50,1372581904:50,1372581905:50,1372581906:50,1372581907:50,1372581908:50,1372581909:50,1372581910:50,1372582514:50,1372582515:50,1372582516:50,1372582517:50,1372582518:50,1372582519:50
+};
 
 (function mergeSeedPoints(){
   try{
@@ -3039,6 +3052,16 @@ const SEED_POINTS=[
       showToast(`📦 Đã thêm ${added} điểm dữ liệu có sẵn`);
     }
     if(SEED_POINTS.length)localStorage.setItem('seedApplied',JSON.stringify(applied));
+    // Nạp giới hạn đặt sẵn vào customLimits (chỉ 1 lần, không đè giá trị user đã tự sửa)
+    const seededLim=JSON.parse(localStorage.getItem('seedLimApplied')||'[]');
+    let limAdded=0;
+    for(const id in SEED_LIMITS){
+      if(seededLim.includes(id))continue;
+      seededLim.push(id);
+      if(customLimits[id]===undefined){customLimits[id]=SEED_LIMITS[id];limAdded++;}
+    }
+    if(limAdded>0)localStorage.setItem('customLimits',JSON.stringify(customLimits));
+    localStorage.setItem('seedLimApplied',JSON.stringify(seededLim));
   }catch(e){}
 })();
 
