@@ -85,14 +85,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* Huy hiệu hướng đi + góc nón nổi trên bản đồ */
 #hudHeadingBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(13,17,23,.85);color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap}
 
-/* Biển "Khu dân cư" / "Hết khu dân cư" nổi giữa bản đồ */
-#zoneSign{display:none;position:absolute;top:64px;left:50%;transform:translateX(-50%) translateY(-8px);z-index:600;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.5);opacity:0;transition:opacity .4s,transform .4s}
+/* Biển "Khu dân cư" / "Hết khu dân cư" nổi giữa bản đồ — có hình biển báo thật */
+#zoneSign{display:none;position:absolute;top:62px;left:50%;transform:translateX(-50%) translateY(-8px);z-index:600;align-items:center;gap:11px;padding:9px 15px 9px 10px;border-radius:14px;background:rgba(13,17,23,.9);border:1px solid var(--border);color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.55);opacity:0;transition:opacity .4s,transform .4s}
 #zoneSign.show{display:flex;opacity:1;transform:translateX(-50%) translateY(0)}
-#zoneSign.zone-urban{background:#1565c0;border:2px solid #fff;color:#fff}
-#zoneSign.zone-rural{background:#eceff1;border:2px solid #90a4ae;color:#263238}
-#zoneSign .zs-ico{font-size:26px;line-height:1}
-#zoneSign .zs-t{font-size:14px;font-weight:900;letter-spacing:.5px}
-#zoneSign .zs-s{font-size:10px;opacity:.85;margin-top:1px}
+#zoneSign svg{display:block;flex-shrink:0}
+#zoneSign .zs-t{font-size:14px;font-weight:900;letter-spacing:.4px}
+#zoneSign .zs-s{font-size:10px;opacity:.8;margin-top:1px}
 
 /* Cảnh báo camera phạt nguội nổi trên bản đồ (theo khoảng cách) */
 #camWarn{display:none;position:absolute;top:112px;left:50%;transform:translateX(-50%);z-index:600;align-items:center;gap:10px;padding:9px 15px;border-radius:12px;background:#c62828;border:2px solid #fff;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.5)}
@@ -300,7 +298,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.6</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.7</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -1830,25 +1828,29 @@ let urbanZones=JSON.parse(localStorage.getItem('urbanZones')||'[]'); // [{lat,ln
 // mode:'rural' = biển "Hết khu dân cư" · mode:'urban' = biển "Khu dân cư"
 const ZONE_SIGNS=[
   {lat:9.317791,lng:105.719148,mode:'rural',name:'Hết khu dân cư'},
+  {lat:9.317562,lng:105.719026,mode:'urban',name:'Khu dân cư'},
 ];
-let lastZoneSignIdx=-1;
+let lastZoneKey=null;
 function checkZoneSigns(){
   if(!myLat)return false;
-  let near=-1,nd=55;
-  ZONE_SIGNS.forEach((z,i)=>{const d=dist(myLat,myLng,z.lat,z.lng);if(d<nd){nd=d;near=i;}});
-  if(near>=0){
-    if(near!==lastZoneSignIdx){
-      lastZoneSignIdx=near;
-      const z=ZONE_SIGNS[near];
-      setZone(z.mode,z.mode==='urban'?z.name:undefined);
-    }
-    return true;
+  const near=ZONE_SIGNS.map((z,i)=>({z,d:dist(myLat,myLng,z.lat,z.lng)})).filter(o=>o.d<55).sort((a,b)=>a.d-b.d);
+  if(!near.length){
+    if(ZONE_SIGNS.every(z=>dist(myLat,myLng,z.lat,z.lng)>120))lastZoneKey=null; // đi xa → cho báo lại lần sau
+    return false;
   }
-  // đã đi xa khỏi mọi biển → cho phép biển đó kích hoạt lại lần sau
-  let far=true;
-  ZONE_SIGNS.forEach(z=>{if(dist(myLat,myLng,z.lat,z.lng)<120)far=false;});
-  if(far)lastZoneSignIdx=-1;
-  return false;
+  const urbanS=near.find(o=>o.z.mode==='urban');
+  const ruralS=near.find(o=>o.z.mode==='rural');
+  let mode,name;
+  if(urbanS&&ruralS&&myHeading!==null){
+    // Cặp biển vào/ra đối nhau: hướng RA khỏi KDC = từ biển "khu dân cư" tới biển "hết"
+    const outbound=bearing(urbanS.z.lat,urbanS.z.lng,ruralS.z.lat,ruralS.z.lng);
+    mode=(angleDiff(myHeading,outbound)<90)?'rural':'urban';
+  } else {
+    mode=near[0].z.mode;
+  }
+  if(mode==='urban')name=(urbanS||near[0]).z.name;
+  if(lastZoneKey!==mode){lastZoneKey=mode;setZone(mode,mode==='urban'?name:undefined);}
+  return true;
 }
 
 function medianSpeedWindow(fromMsAgo,toMsAgo){
@@ -1916,16 +1918,37 @@ function updateCameraWarn(){
   }
 }
 
+// Hình biển báo thật của VN: R.420 "Khu đông dân cư" (nền xanh, hình các tòa nhà),
+// R.421 "Hết khu đông dân cư" (thêm vạch đỏ chéo)
+function zoneSignSVG(end){
+  return `<svg viewBox="0 0 64 64" width="48" height="48">
+    <rect x="3" y="3" width="58" height="58" rx="9" fill="#0d47a1" stroke="#fff" stroke-width="3.5"/>
+    <g fill="#fff">
+      <rect x="10" y="36" width="9" height="17"/>
+      <rect x="20" y="24" width="11" height="29"/>
+      <rect x="32" y="31" width="8" height="22"/>
+      <rect x="41" y="19" width="11" height="34"/>
+    </g>
+    <g fill="#0d47a1">
+      <rect x="23" y="28" width="2.4" height="2.4"/><rect x="27.2" y="28" width="2.4" height="2.4"/>
+      <rect x="23" y="34" width="2.4" height="2.4"/><rect x="27.2" y="34" width="2.4" height="2.4"/>
+      <rect x="44" y="24" width="2.4" height="2.4"/><rect x="48.2" y="24" width="2.4" height="2.4"/>
+      <rect x="44" y="30" width="2.4" height="2.4"/><rect x="48.2" y="30" width="2.4" height="2.4"/>
+      <rect x="44" y="36" width="2.4" height="2.4"/><rect x="48.2" y="36" width="2.4" height="2.4"/>
+    </g>
+    ${end?'<line x1="8" y1="56" x2="56" y2="8" stroke="#e53935" stroke-width="6"/>':''}
+  </svg>`;
+}
+
 function showZoneSign(mode,areaName){
   const el=document.getElementById('zoneSign');
   if(!el)return;
   if(mode==='urban'){
-    el.className='zone-urban show';
-    el.innerHTML=`<div class="zs-ico">🏘</div><div><div class="zs-t">KHU DÂN CƯ</div>${areaName?`<div class="zs-s">${areaName}</div>`:''}<div class="zs-s">Giảm tốc độ</div></div>`;
+    el.innerHTML=zoneSignSVG(false)+`<div><div class="zs-t">KHU DÂN CƯ</div>${areaName?`<div class="zs-s">${areaName}</div>`:''}<div class="zs-s">Giảm tốc độ · chú ý người đi bộ</div></div>`;
   } else {
-    el.className='zone-rural show';
-    el.innerHTML=`<div class="zs-ico">🏞</div><div><div class="zs-t">HẾT KHU DÂN CƯ</div><div class="zs-s">Được tăng tốc độ</div></div>`;
+    el.innerHTML=zoneSignSVG(true)+`<div><div class="zs-t">HẾT KHU DÂN CƯ</div><div class="zs-s">Được tăng tốc độ</div></div>`;
   }
+  el.className='show';
   clearTimeout(showZoneSign._t);
   showZoneSign._t=setTimeout(()=>{el.classList.remove('show');},6000);
 }
