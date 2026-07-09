@@ -298,7 +298,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.7</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.8</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -572,6 +572,26 @@ textarea{resize:none;min-height:60px}
     </div>
     <button class="modal-btn" style="background:var(--amber);color:#000;font-weight:700" onclick="saveCycle()">💾 Lưu chu kỳ</button>
     <button class="modal-btn mb-cancel" onclick="closeModal('cycleModal')">Hủy</button>
+  </div>
+</div>
+
+<!-- MODAL THÊM NHANH TẠI ĐIỂM CHẠM TRÊN BẢN ĐỒ -->
+<div class="modal-overlay" id="addHereModal">
+  <div class="modal">
+    <div class="modal-title">📍 Đánh dấu điểm tại đây</div>
+    <p class="tip" id="addHereCoord">--</p>
+    <div class="form-group"><label>Ở đây có gì?</label>
+      <div class="status-toggle" style="flex-wrap:wrap">
+        <div class="st-btn active-normal" id="ah-light" onclick="ahSetKind('light')">🚦 Đèn giao thông</div>
+        <div class="st-btn" id="ah-cam" onclick="ahSetKind('cam')">📷 Camera phạt nguội</div>
+        <div class="st-btn" id="ah-both" onclick="ahSetKind('both')">🚦📷 Cả hai</div>
+      </div>
+    </div>
+    <div class="form-group"><label>Tên / ghi chú (không bắt buộc)</label>
+      <input type="text" id="ahName" placeholder="VD: Ngã tư Trần Phú – Lê Lợi">
+    </div>
+    <button class="modal-btn" style="background:var(--green);color:#000;font-weight:700" onclick="saveAddHere()">💾 Lưu điểm này</button>
+    <button class="modal-btn mb-cancel" onclick="closeModal('addHereModal')">Hủy</button>
   </div>
 </div>
 
@@ -1252,12 +1272,8 @@ function initMap(){
     },5000);
   });
 
-  // Click bản đồ: chỉ điền tọa độ, KHÔNG chuyển tab (tránh nhầm khi lái)
-  map.on('click',function(e){
-    document.getElementById('mLat').value=e.latlng.lat.toFixed(6);
-    document.getElementById('mLng').value=e.latlng.lng.toFixed(6);
-    showToast('📍 Đã chọn vị trí — vào tab ➕ Thêm để lưu');
-  });
+  // Chạm bản đồ → mở bảng thêm nhanh đèn/camera tại điểm đó
+  map.on('click',e=>openAddHere(e.latlng.lat,e.latlng.lng));
 
   initHudMap();
   renderMarkers();startGPS();startHudTick();
@@ -1273,6 +1289,8 @@ function initHudMap(){
   // Chạm 2 lần vào bản đồ → hiện/ẩn header + thanh nhập (tắt zoom double-tap)
   hudMap.doubleClickZoom.disable();
   hudMap.on('dblclick',()=>toggleChrome());
+  // Chạm bản đồ HUD → mở bảng thêm nhanh đèn/camera tại điểm đó
+  hudMap.on('click',e=>openAddHere(e.latlng.lat,e.latlng.lng));
   // Kéo bản đồ → tạm tắt bám theo, 5 giây sau tự quay về vị trí mũi tên
   hudMap.on('dragstart',()=>{
     hudFollow=false;updateHudFollowBtn();
@@ -1341,7 +1359,7 @@ function renderHudMarkers(){
   if(!hudMap)return;
   hudLightMarkers.forEach(m=>hudMap.removeLayer(m));hudLightMarkers=[];
   points.forEach(p=>{
-    hudLightMarkers.push(L.marker([p.lat,p.lng],{icon:makeIcon('#f85149')}).addTo(hudMap).bindPopup(`🚦 ${p.name}`));
+    hudLightMarkers.push(L.marker([p.lat,p.lng],{icon:pointIcon(p)}).addTo(hudMap).bindPopup(`${p.name}`));
   });
 }
 function hudMapSetRoute(coords,dashed){
@@ -1374,6 +1392,16 @@ function makeIcon(color){
   });
 }
 
+// Icon theo loại điểm: camera → 📷, đèn+camera → 🚦, đèn → 🚦
+function pointIcon(p){
+  const cameraOnly=/^Camera/i.test(p.type||'');
+  const emoji=cameraOnly?'📷':'🚦';
+  const color=cameraOnly?'#c62828':'#f85149';
+  return L.divIcon({className:'',
+    html:`<div style="width:30px;height:30px;border-radius:8px;background:#fff;border:2px solid ${color};box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:17px">${emoji}</div>`,
+    iconSize:[30,30],iconAnchor:[15,15]});
+}
+
 // Icon vị trí của tôi (mũi tên xanh to, kiểu VietMap)
 function makeMyIcon(heading){
   const rot=(heading||0)-90; // ➤ mặc định chỉ sang phải nên trừ 90°
@@ -1387,7 +1415,7 @@ function makeMyIcon(heading){
 function renderMarkers(){
   markers.forEach(m=>map.removeLayer(m));markers=[];
   points.forEach(p=>{
-    const m=L.marker([p.lat,p.lng],{icon:makeIcon('#f85149')}).addTo(map);
+    const m=L.marker([p.lat,p.lng],{icon:pointIcon(p)}).addTo(map);
     const cyc=p.cycle;
     m.bindPopup(`<div style="font-family:-apple-system,sans-serif;min-width:150px">
       <div style="font-size:13px;font-weight:700;margin-bottom:3px">🚦 ${p.name}</div>
@@ -1440,6 +1468,33 @@ function savePoint(p){
   points.push(p);localStorage.setItem(SK,JSON.stringify(points));
   renderMarkers();renderList();updateStats();
   flashStatsBar();
+}
+
+// ═══ THÊM NHANH TẠI ĐIỂM CHẠM TRÊN BẢN ĐỒ ═══
+let ahLat=null,ahLng=null,ahKind='light';
+function openAddHere(lat,lng){
+  ahLat=lat;ahLng=lng;ahKind='light';
+  ahSetKind('light');
+  document.getElementById('ahName').value='';
+  document.getElementById('addHereCoord').textContent=`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  document.getElementById('addHereModal').classList.add('active');
+}
+function ahSetKind(k){
+  ahKind=k;
+  document.getElementById('ah-light').className='st-btn'+(k==='light'?' active-normal':'');
+  document.getElementById('ah-cam').className='st-btn'+(k==='cam'?' active-broken':'');
+  document.getElementById('ah-both').className='st-btn'+(k==='both'?' active-normal':'');
+}
+function saveAddHere(){
+  if(ahLat===null)return;
+  const nm=document.getElementById('ahName').value.trim();
+  let name,type,note;
+  if(ahKind==='cam'){name=nm||'Camera phạt nguội';type='Camera phạt nguội';note='📷 Camera phạt nguội';}
+  else if(ahKind==='both'){name=(nm||'Ngã tư')+' 📷';type='Đèn giao thông';note='📷 Có camera phạt nguội';}
+  else{name=nm||'Đèn giao thông';type='Đèn giao thông';note='';}
+  savePoint({id:Date.now(),name,addr:`${ahLat.toFixed(5)},${ahLng.toFixed(5)}`,lat:ahLat,lng:ahLng,type,note,time:Date.now(),cycle:null,cycleAnchor:null});
+  closeModal('addHereModal');
+  showToast('✅ Đã lưu điểm — cảm ơn bạn đã đóng góp!');
 }
 
 // ═══════════════ 70MAI EXIF ═══════════════
@@ -1663,7 +1718,7 @@ function confirmDelete(){
   renderMarkers();renderList();updateStats();
   closeModal('deleteModal');showToast('🗑️ Đã xóa');
 }
-function closeModal(id){document.getElementById(id).classList.remove('active');deleteId=null;cycleEditId=null;}
+function closeModal(id){document.getElementById(id).classList.remove('active');deleteId=null;cycleEditId=null;if(id==='addHereModal')ahLat=ahLng=null;}
 
 function navTo(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,'_blank');}
 function viewMap(lat,lng){switchTab('map');if(map){map.setView([lat,lng],17);}}
