@@ -300,7 +300,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.5</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.6</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -1826,6 +1826,31 @@ let zoneOverride=null;               // 'urban' | 'rural' | null (đè lên phâ
 let lastRoadTags=null,lastRoadOsmId=null;
 let urbanZones=JSON.parse(localStorage.getItem('urbanZones')||'[]'); // [{lat,lng,name}]
 
+// Biển ranh giới khu dân cư ĐẶT SẴN (từ biển báo thật ngoài đường)
+// mode:'rural' = biển "Hết khu dân cư" · mode:'urban' = biển "Khu dân cư"
+const ZONE_SIGNS=[
+  {lat:9.317791,lng:105.719148,mode:'rural',name:'Hết khu dân cư'},
+];
+let lastZoneSignIdx=-1;
+function checkZoneSigns(){
+  if(!myLat)return false;
+  let near=-1,nd=55;
+  ZONE_SIGNS.forEach((z,i)=>{const d=dist(myLat,myLng,z.lat,z.lng);if(d<nd){nd=d;near=i;}});
+  if(near>=0){
+    if(near!==lastZoneSignIdx){
+      lastZoneSignIdx=near;
+      const z=ZONE_SIGNS[near];
+      setZone(z.mode,z.mode==='urban'?z.name:undefined);
+    }
+    return true;
+  }
+  // đã đi xa khỏi mọi biển → cho phép biển đó kích hoạt lại lần sau
+  let far=true;
+  ZONE_SIGNS.forEach(z=>{if(dist(myLat,myLng,z.lat,z.lng)<120)far=false;});
+  if(far)lastZoneSignIdx=-1;
+  return false;
+}
+
 function medianSpeedWindow(fromMsAgo,toMsAgo){
   const now=Date.now();
   const s=speedHistory.filter(x=>{const a=now-x.t;return a>=toMsAgo&&a<=fromMsAgo;}).map(x=>x.spd).sort((a,b)=>a-b);
@@ -1834,6 +1859,8 @@ function medianSpeedWindow(fromMsAgo,toMsAgo){
 
 function detectZone(kmh){
   if(!myLat)return;
+  // 0) Biển ranh giới đặt sẵn (biển thật) — ưu tiên cao nhất
+  if(checkZoneSigns())return;
   const recent=medianSpeedWindow(15000,0);      // tốc độ giữ 0-15s gần đây
   const earlier=medianSpeedWindow(40000,20000); // tốc độ 20-40s trước
   // 1) Lần sau đi qua vùng đã học → nhận ngay dù chưa kịp phân tích tốc độ
