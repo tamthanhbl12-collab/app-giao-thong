@@ -101,6 +101,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #camWarn .cw-t{font-size:13px;font-weight:900;letter-spacing:.3px}
 #camWarn .cw-s{font-size:10px;opacity:.9;margin-top:1px}
 
+/* Nhắc nhập chu kỳ khi dừng ở đèn có sẵn nhưng chưa có giây */
+#cyclePrompt{display:none;position:absolute;bottom:16px;left:12px;right:12px;z-index:600;align-items:center;gap:10px;padding:11px 14px;border-radius:12px;background:var(--amber);color:#000;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#cyclePrompt.show{display:flex}
+#cyclePrompt .cp-body{flex:1;min-width:0}
+#cyclePrompt .cp-t{font-size:12px;font-weight:700}
+#cyclePrompt .cp-name{font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cyclePrompt .cp-add{flex-shrink:0;background:#000;color:var(--amber);border:none;font-size:13px;font-weight:800;padding:9px 12px;border-radius:9px;cursor:pointer}
+#cyclePrompt .cp-x{flex-shrink:0;background:rgba(0,0,0,.15);color:#000;border:none;font-size:14px;font-weight:800;width:34px;height:34px;border-radius:9px;cursor:pointer}
+
 /* Nút loa trên bản đồ */
 #hudSoundBtn{position:absolute;top:12px;right:12px;z-index:500;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.95);font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 #hudSoundBtn.muted{opacity:.55}
@@ -291,7 +300,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.3</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.4</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -366,6 +375,7 @@ textarea{resize:none;min-height:60px}
     <div id="hudHeadingBadge">🧭 <span id="hudHeading">--</span> · 👁 ±60°</div>
     <div id="zoneSign"></div>
     <div id="camWarn"><div class="cw-ico">📷</div><div><div class="cw-t">CAMERA PHẠT NGUỘI</div><div class="cw-s"><span class="cw-dist">--</span> phía trước · giữ tốc độ</div></div></div>
+    <div id="cyclePrompt"><div class="cp-body"><div class="cp-t">⏱️ Đèn này chưa có chu kỳ</div><div class="cp-name" id="cpName">--</div></div><button class="cp-add" onclick="cyclePromptOpen()">Nhập giây đèn</button><button class="cp-x" onclick="cyclePromptDismiss()">✕</button></div>
     <button id="hudSoundBtn" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
     <button id="hudSearchBtn" onclick="openSearch()" title="Nhập điểm đến">🔍</button>
     <button id="hudMenuBtn" onclick="openFloatMenu()" title="Menu">⋮</button>
@@ -865,6 +875,8 @@ function autoDetectTrafficLight(lat,lng,kmh){
       // Tiếp tục dừng — ghi thêm tọa độ để kiểm tra drift
       stopPositions.push({lat,lng});
       const stopSec=(now-stopStartTime)/1000;
+      // Dừng ≥5s cạnh đèn ĐÃ CÓ nhưng CHƯA có chu kỳ → nhắc nhập giây đèn
+      if(stopSec>=5)maybeCyclePrompt(lat,lng);
       if(stopSec>MAX_STOP_SEC){
         stopStartTime=null;stopPositions=[];
         if(mapAccEl)mapAccEl.style.display='none';
@@ -873,6 +885,7 @@ function autoDetectTrafficLight(lat,lng,kmh){
   } else {
     // === VỪA CHẠY LẠI ===
     if(mapAccEl)mapAccEl.style.display='none';
+    cyclePromptDismiss(); // chạy lại thì ẩn nhắc chu kỳ
     if(stopStartTime&&pendingAutoPoint===null){
       const stopSec=(now-stopStartTime)/1000;
       if(stopSec>=MIN_STOP_SEC&&stopSec<=MAX_STOP_SEC){
@@ -887,6 +900,31 @@ function autoDetectTrafficLight(lat,lng,kmh){
       stopStartTime=null;stopPositions=[];
     }
   }
+}
+
+// Nhắc nhập chu kỳ khi dừng cạnh đèn đã lưu nhưng chưa có giây
+let cyclePromptId=null;
+function maybeCyclePrompt(lat,lng){
+  const el=document.getElementById('cyclePrompt');
+  if(!el||cyclePromptId!==null)return;
+  // đèn gần nhất trong 60m, chưa có chu kỳ
+  let best=null,bd=60;
+  points.forEach(p=>{if(p.cycle&&p.cycleAnchor)return;const d=dist(lat,lng,p.lat,p.lng);if(d<bd){bd=d;best=p;}});
+  if(!best)return;
+  cyclePromptId=best.id;
+  document.getElementById('cpName').textContent=best.name;
+  el.classList.add('show');
+  speak(`Đèn ${best.name} chưa có chu kỳ, bấm nhập giây đèn nếu muốn`);
+}
+function cyclePromptOpen(){
+  const id=cyclePromptId;
+  cyclePromptDismiss();
+  if(id!==null){toggleChrome(true);openCycleModal(id);}
+}
+function cyclePromptDismiss(){
+  const el=document.getElementById('cyclePrompt');
+  if(el)el.classList.remove('show');
+  cyclePromptId=null;
 }
 
 // Tính độ lệch tọa độ tối đa trong khi dừng
@@ -3033,7 +3071,9 @@ const SEED_POINTS=[
 // Giới hạn tốc độ đặt sẵn cho một số đường (OSM way id → km/h). VD: cả đường 23/8 = 50
 const SEED_LIMITS={
   // Đường 23 Tháng 8 (toàn bộ đoạn) = 50 km/h
-  566237560:50,566237564:50,566344059:50,1123799952:50,1372581902:50,1372581903:50,1372581904:50,1372581905:50,1372581906:50,1372581907:50,1372581908:50,1372581909:50,1372581910:50,1372582514:50,1372582515:50,1372582516:50,1372582517:50,1372582518:50,1372582519:50
+  566237560:50,566237564:50,566344059:50,1123799952:50,1372581902:50,1372581903:50,1372581904:50,1372581905:50,1372581906:50,1372581907:50,1372581908:50,1372581909:50,1372581910:50,1372582514:50,1372582515:50,1372582516:50,1372582517:50,1372582518:50,1372582519:50,
+  // Cao Văn Lầu đoạn Ninh Bình → Nguyễn Thị Minh Khai = 50 km/h
+  142732989:50,303300467:50,971581730:50,971581731:50,1035748534:50,1035748535:50
 };
 
 (function mergeSeedPoints(){
