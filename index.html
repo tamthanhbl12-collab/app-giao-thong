@@ -298,7 +298,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.9</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.0</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -2153,47 +2153,47 @@ async function setNavDest(lat,lng,name){
 }
 
 // OSRM routing — đường thật theo lộ trình
-// Tìm điểm trung gian trên Quốc lộ 1 gần trung điểm hành trình
-// → ép lộ trình bám đường lớn (như Google Maps) thay vì đường tắt nhỏ
-async function findQL1Via(fromLat,fromLng,toLat,toLng){
-  try{
-    const midLat=(fromLat+toLat)/2,midLng=(fromLng+toLng)/2;
-    const q=`[out:json][timeout:12];way["highway"]["ref"~"^QL.?1A?$"](around:45000,${midLat.toFixed(4)},${midLng.toFixed(4)});out center 1;`;
-    for(const server of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-      try{
-        const res=await fetch(server,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:AbortSignal.timeout(12000)});
-        if(!res.ok)continue;
-        const d=await res.json();
-        const w=d.elements&&d.elements[0];
-        if(w&&w.center){
-          // Kiểm tra không vòng vèo quá: đường gấp khúc qua via ≤ 1.35 lần đường thẳng
-          const detour=dist(fromLat,fromLng,w.center.lat,w.center.lon)+dist(w.center.lat,w.center.lon,toLat,toLng);
-          if(detour<=dist(fromLat,fromLng,toLat,toLng)*1.35)return{lat:w.center.lat,lng:w.center.lon};
-        }
-        return null;
-      }catch(e){}
+// Đường xương sống QL1 (Cà Mau → Cần Thơ/Vĩnh Long) tải sẵn — dùng ép route bám đường lớn
+const QL1_ANCHORS=[[8.75993,104.99403],[8.79543,105.00274],[8.82867,105.01753],[8.86548,105.0167],[8.90181,105.01464],[8.93777,105.0116],[8.97373,105.01387],[9.01012,105.01556],[9.04431,105.02803],[9.07097,105.05422],[9.09463,105.08191],[9.10953,105.15449],[9.11886,105.10922],[9.12819,105.18731],[9.14557,105.13425],[9.16206,105.21269],[9.16218,105.2492],[9.17363,105.15745],[9.178,105.28424],[9.192,105.31915],[9.20547,105.35314],[9.21974,105.38776],[9.22926,105.42301],[9.23858,105.45867],[9.24675,105.49452],[9.25573,105.53171],[9.26483,105.5673],[9.27385,105.60281],[9.2847,105.63777],[9.29369,105.67381],[9.30837,105.70712],[9.34358,105.71496],[9.38001,105.71248],[9.41421,105.72589],[9.43514,105.75684],[9.452,105.79087],[9.47459,105.82221],[9.49896,105.84938],[9.51937,105.88551],[9.53711,105.91777],[9.56189,105.94633],[9.59605,105.95855],[9.63169,105.95359],[9.66024,105.93078],[9.68959,105.90946],[9.71941,105.88793],[9.74905,105.86638],[9.77851,105.84488],[9.80825,105.8243],[9.83507,105.79917],[9.86383,105.77643],[9.89547,105.75882],[9.91921,105.73024],[9.95598,105.73386],[9.98869,105.74938],[10.01011,105.77927],[10.04064,105.81999],[10.07335,105.83689],[10.08892,105.86987],[10.11365,105.89649],[10.14142,105.91974],[10.17914,105.93378],[10.21539,105.93916],[10.25011,105.92914],[10.28397,105.90752],[10.31639,105.89069],[10.33811,105.91991],[10.35526,105.95228]];
+
+// Tìm điểm dẫn trên QL1 (offline, tức thì) — ép lộ trình bám đường lớn như Google Maps
+function findQL1Via(fromLat,fromLng,toLat,toLng){
+  const direct=dist(fromLat,fromLng,toLat,toLng);
+  if(direct<40000)return [];
+  const vias=[];
+  // Lấy điểm QL1 gần nhất tại 35% và 65% dọc đường thẳng
+  [0.35,0.65].forEach(f=>{
+    const mLat=fromLat+(toLat-fromLat)*f, mLng=fromLng+(toLng-fromLng)*f;
+    let best=null,bd=1e9;
+    QL1_ANCHORS.forEach(a=>{const d=dist(mLat,mLng,a[0],a[1]);if(d<bd){bd=d;best=a;}});
+    if(best&&bd<45000&&!vias.some(v=>dist(v.lat,v.lng,best[0],best[1])<3000)){
+      vias.push({lat:best[0],lng:best[1],_do:dist(fromLat,fromLng,best[0],best[1])});
     }
-  }catch(e){}
-  return null;
+  });
+  vias.sort((a,b)=>a._do-b._do); // theo thứ tự đi
+  // Bỏ nếu tổng đường vòng qua các via > 1.7 lần đường thẳng
+  let total=0,prev=[fromLat,fromLng];
+  vias.forEach(v=>{total+=dist(prev[0],prev[1],v.lat,v.lng);prev=[v.lat,v.lng];});
+  total+=dist(prev[0],prev[1],toLat,toLng);
+  if(total>direct*1.7)return [];
+  return vias;
 }
 
 async function fetchRoute(fromLat,fromLng,toLat,toLng){
   showToast('🗺️ Đang tính lộ trình...');
-  // ƯU TIÊN ĐƯỜNG LỚN: hành trình xa (>40km) thử bám theo Quốc lộ 1
+  // ƯU TIÊN ĐƯỜNG LỚN: hành trình xa bám theo Quốc lộ 1 (tính offline, luôn chạy)
   if(navDest){
-    if(!navDest.viaChecked&&dist(fromLat,fromLng,toLat,toLng)>40000){
+    if(!navDest.viaChecked){
       navDest.viaChecked=true;
-      navDest.bigVia=await findQL1Via(fromLat,fromLng,toLat,toLng);
+      navDest.bigVias=findQL1Via(fromLat,fromLng,toLat,toLng);
     }
-    // Đã chạy qua điểm via rồi thì bỏ (tránh route bắt vòng ngược lại)
-    if(navDest.bigVia){
-      const dToVia=dist(fromLat,fromLng,navDest.bigVia.lat,navDest.bigVia.lng);
-      const viaToDest=dist(navDest.bigVia.lat,navDest.bigVia.lng,toLat,toLng);
+    // Bỏ các điểm dẫn đã đi qua (còn <3km) hoặc nằm phía sau đích
+    if(navDest.bigVias&&navDest.bigVias.length){
       const meToDest=dist(fromLat,fromLng,toLat,toLng);
-      if(dToVia<4000||meToDest<viaToDest)navDest.bigVia=null;
+      navDest.bigVias=navDest.bigVias.filter(v=>dist(fromLat,fromLng,v.lat,v.lng)>3000&&dist(v.lat,v.lng,toLat,toLng)<meToDest);
     }
   }
-  const viaStr=(navDest&&navDest.bigVia)?`${navDest.bigVia.lng},${navDest.bigVia.lat};`:'';
+  const viaStr=(navDest&&navDest.bigVias&&navDest.bigVias.length)?navDest.bigVias.map(v=>`${v.lng},${v.lat}`).join(';')+';':'';
   const altStr=viaStr?'':'&alternatives=2'; // OSRM không cho alternatives khi có điểm giữa
   // Thử OSRM demo server (public, miễn phí)
   const servers=[
@@ -2226,7 +2226,7 @@ async function fetchRoute(fromLat,fromLng,toLat,toLng){
       const coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
       navDest.routeDist=route.distance;
       navDest.routeDuration=route.duration;
-      navDest.steps=route.legs.flatMap(l=>l.steps); // gộp các chặng (khi có điểm via)
+      navDest.steps=route.legs.flatMap(l=>l.steps||[]); // gộp các chặng (khi có điểm via)
       if(navPolyline)map.removeLayer(navPolyline);
       navPolyline=L.polyline(coords,{color:'#58a6ff',weight:4,opacity:0.9}).addTo(map);
       map.fitBounds(navPolyline.getBounds(),{padding:[50,50]});
