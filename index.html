@@ -298,7 +298,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.1</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.2</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -803,9 +803,13 @@ function toggleDriveMode(){
     showToast('⏹ Đã tắt chế độ lái xe');
     // Dọn thẻ đèn để nhường chỗ cho bản đồ
     document.getElementById('hudMain').innerHTML='';
-    if(hudMap)setTimeout(()=>hudMap.invalidateSize(),100);
+    refreshMap(hudMap);
   }
 }
+
+// Xoay màn hình / đổi kích thước → refresh bản đồ đang hiển thị
+window.addEventListener('resize',()=>{refreshMap(hudMap);refreshMap(map);});
+window.addEventListener('orientationchange',()=>{refreshMap(hudMap);refreshMap(map);});
 
 // ═══════════════ GPS ═══════════════
 function startGPS(){
@@ -3140,8 +3144,7 @@ let chromeHideTimer=null;
 function toggleChrome(force){
   const show=(typeof force==='boolean')?force:document.body.classList.contains('chrome-off');
   document.body.classList.toggle('chrome-off',!show);
-  if(hudMap)setTimeout(()=>hudMap.invalidateSize(),80);
-  if(map)setTimeout(()=>map.invalidateSize(),80);
+  refreshMap(hudMap);refreshMap(map);
   if(show)scheduleChromeHide(); else clearChromeHide();
 }
 // Tự ẩn topbar sau 5 giây (trừ khi đang gõ địa chỉ hoặc menu đang mở)
@@ -3181,18 +3184,25 @@ document.addEventListener('click',e=>{
   if(m&&m.classList.contains('open')&&!e.target.closest('.tb-menu')&&!e.target.closest('#menuDropdown'))m.classList.remove('open');
 });
 
+// Refresh Leaflet nhiều lần để bản đồ luôn phủ hết khung (kể cả máy chậm)
+function refreshMap(m){
+  if(!m)return;
+  [30,150,350,600].forEach(t=>setTimeout(()=>{try{m.invalidateSize(false);}catch(e){}},t));
+}
 function switchTab(tab){
   setStatsBarForTab(tab);
-  if(tab!=='hud')toggleChrome(true); // các tab khác cần thanh trên để thao tác
+  if(tab==='hud')toggleChrome(false); // HUD luôn full-screen bản đồ
+  else toggleChrome(true);             // các tab khác cần thanh trên để thao tác
   ['hud','map','list','add','cam','xe'].forEach(t=>{
     document.getElementById(`panel-${t}`).classList.toggle('active',t===tab);
   });
   if(tab==='list')renderList();
   if(tab==='xe')renderXePanel();
-  if(tab==='hud'&&hudMap)setTimeout(()=>hudMap.invalidateSize(),50);
+  if(tab==='hud')refreshMap(hudMap);
   if(tab==='map'&&map){
-    setTimeout(()=>map.invalidateSize(),50);
+    refreshMap(map);
     document.getElementById('mapSpeedBox').style.display='flex';
+    if(myLat)setTimeout(()=>map.setView([myLat,myLng],map.getZoom()||15),120);
   } else {
     document.getElementById('mapSpeedBox').style.display='none';
   }
