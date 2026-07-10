@@ -298,7 +298,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.8</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v8.9</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -325,6 +325,7 @@ textarea{resize:none;min-height:60px}
     <div class="menu-item" onclick="menuGo('add')">➕ Thêm điểm</div>
     <div class="menu-item" onclick="menuGo('cam')">📷 Camera 70mai</div>
     <div class="menu-item" onclick="menuGo('xe')">🚛 Quản lý xe</div>
+    <div class="menu-item" onclick="toggleMenu(false);openSpeedCalib()">⚙️ Chỉnh tốc độ hiển thị</div>
   </div>
 </div>
 
@@ -575,6 +576,24 @@ textarea{resize:none;min-height:60px}
   </div>
 </div>
 
+<!-- MODAL CHỈNH HỆ SỐ TỐC ĐỘ -->
+<div class="modal-overlay" id="calibModal">
+  <div class="modal">
+    <div class="modal-title">⚙️ Chỉnh tốc độ hiển thị</div>
+    <p class="tip">MapGo đọc tốc độ GPS thật (chính xác). Đồng hồ xe & VietMap thường báo cao hơn. Chỉnh cho khớp thứ bạn quen nhìn.</p>
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin:14px 0">
+      <button class="modal-btn" style="width:56px;background:var(--surface2);color:var(--text);margin:0" onclick="calibNudge(-1)">−</button>
+      <div style="text-align:center;min-width:110px">
+        <div id="calibPct" style="font-size:26px;font-weight:900;color:var(--amber)">+0%</div>
+        <div style="font-size:11px;color:var(--muted)">VD 50 → <span id="calibExample">50</span> km/h</div>
+      </div>
+      <button class="modal-btn" style="width:56px;background:var(--surface2);color:var(--text);margin:0" onclick="calibNudge(1)">+</button>
+    </div>
+    <p class="tip" style="text-align:center">Chỉnh sao cho số trên MapGo bằng số VietMap/đồng hồ xe khi chạy cùng lúc.</p>
+    <button class="modal-btn" style="background:var(--green);color:#000;font-weight:700" onclick="closeModal('calibModal')">✅ Xong</button>
+  </div>
+</div>
+
 <!-- MODAL THÊM NHANH TẠI ĐIỂM CHẠM TRÊN BẢN ĐỒ -->
 <div class="modal-overlay" id="addHereModal">
   <div class="modal">
@@ -606,6 +625,7 @@ let points=JSON.parse(localStorage.getItem(SK)||'[]');
 // GPS state
 let myLat=null,myLng=null,mySpeed=0,myHeading=null;
 let lastFixTime=0,derivedSpeed=0; // tự tính tốc độ khi thiết bị không cho coords.speed
+let speedCalib=parseFloat(localStorage.getItem('speedCalib')||'1.09'); // hệ số hiệu chỉnh tốc độ (khớp đồng hồ xe/VietMap)
 let driveMode=false;
 let gpsInitialized=false;
 let warnedIds=new Set(); // đã cảnh báo lần này
@@ -652,6 +672,19 @@ function toggleSound(){
 function updateSoundBtn(){
   const b=document.getElementById('hudSoundBtn');
   if(b){b.textContent=soundOn?'🔊':'🔇';b.classList.toggle('muted',!soundOn);}
+}
+
+// ═══ CHỈNH HỆ SỐ TỐC ĐỘ ═══
+function openSpeedCalib(){renderCalib();document.getElementById('calibModal').classList.add('active');}
+function renderCalib(){
+  const pct=Math.round((speedCalib-1)*100);
+  document.getElementById('calibPct').textContent=(pct>=0?'+':'')+pct+'%';
+  document.getElementById('calibExample').textContent=Math.round(50*speedCalib);
+}
+function calibNudge(step){
+  speedCalib=Math.min(1.30,Math.max(0.85,+(speedCalib+step/100).toFixed(2)));
+  localStorage.setItem('speedCalib',speedCalib);
+  renderCalib();
 }
 
 function beep(freq=880,dur=0.15,vol=0.3){
@@ -797,7 +830,7 @@ function startGPS(){
     }
     lastFixTime=pos.timestamp;
     myLat=nLat;myLng=nLng;
-    mySpeed=spd||0; // m/s
+    mySpeed=(spd||0)*speedCalib; // m/s, đã hiệu chỉnh cho khớp đồng hồ xe
     if(pos.coords.heading!==null&&!isNaN(pos.coords.heading))myHeading=pos.coords.heading;
 
     const kmh=Math.round(mySpeed*3.6);
