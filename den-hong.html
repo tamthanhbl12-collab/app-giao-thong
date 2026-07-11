@@ -75,12 +75,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hudSpeedBadge.over{animation:pulse-btn .8s infinite}
 #hudSpeedBadge.over #hudSpeedBig{color:var(--red)}
 
-/* Biển giới hạn tốc độ + tên đường nổi trên bản đồ */
-#hudLimitWrap{display:none;position:absolute;top:96px;left:12px;z-index:500;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
-#hudLimitWrap.show{display:flex}
-#hudLimitSign{width:46px;height:46px;border-radius:50%;background:#fff;border:4px solid #d32f2f;color:#000;font-size:17px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.4)}
+/* Biển giới hạn tốc độ — nằm góc dưới-phải đồng hồ tốc độ (kiểu VietMap) */
+#hudLimitSign{display:none;position:absolute;bottom:-4px;right:-6px;z-index:3;width:38px;height:38px;border-radius:50%;background:#fff;border:3px solid #d32f2f;color:#000;font-size:15px;font-weight:900;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer}
+#hudLimitSign.show{display:flex}
 #hudLimitSign.danger{animation:pulse-btn .8s infinite}
-#hudRoadName{max-width:110px;background:rgba(13,17,23,.85);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+/* Tên đường ngay dưới đồng hồ */
+#hudRoadName{display:none;position:absolute;top:104px;left:12px;z-index:500;max-width:100px;background:rgba(13,17,23,.85);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+#hudRoadName.show{display:block}
 
 /* Huy hiệu hướng đi + góc nón nổi trên bản đồ */
 #hudHeadingBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(13,17,23,.85);color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap}
@@ -298,7 +299,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.2</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.3</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -365,12 +366,10 @@ textarea{resize:none;min-height:60px}
     <div id="hudSpeedBadge">
       <svg id="hudGaugeTicks" viewBox="0 0 84 84"></svg>
       <div id="hudSpeedBig">0</div><div class="hsb-unit">km/h</div>
+      <!-- Biển giới hạn nằm góc đồng hồ (kiểu VietMap), bấm để sửa -->
+      <div id="hudLimitSign" onclick="event.stopPropagation();editCurrentRoadLimit()" title="Bấm để sửa giới hạn">--</div>
     </div>
-    <!-- Biển giới hạn + tên đường: tự cập nhật khi lái, bấm để sửa (lúc đậu xe) -->
-    <div id="hudLimitWrap" onclick="editCurrentRoadLimit()" title="Bấm để sửa giới hạn">
-      <div id="hudLimitSign">--</div>
-      <div id="hudRoadName">--</div>
-    </div>
+    <div id="hudRoadName">--</div>
     <div id="hudHeadingBadge">🧭 <span id="hudHeading">--</span> · 👁 ±60°</div>
     <div id="zoneSign"></div>
     <div id="camWarn"><div class="cw-ico">📷</div><div><div class="cw-t">CAMERA PHẠT NGUỘI</div><div class="cw-s"><span class="cw-dist">--</span> phía trước · giữ tốc độ</div></div></div>
@@ -1902,12 +1901,10 @@ function applySpeedLimit(tags,osmId,announce){
     speak(`Đường ${nameRoad}, giới hạn ${limit}`);
   }
 
-  const wrap=document.getElementById('hudLimitWrap');
-  if(wrap){wrap.classList.add('show');wrap.dataset.osmId=osmId;wrap.title=`${source} · ${highway} — bấm để sửa`;}
   const sign=document.getElementById('hudLimitSign');
-  if(sign)sign.textContent=limit;
+  if(sign){sign.classList.add('show');sign.textContent=limit;sign.dataset.osmId=osmId;sign.title=`${source} · ${highway} — bấm để sửa`;}
   const roadEl=document.getElementById('hudRoadName');
-  if(roadEl)roadEl.textContent=nameRoad;
+  if(roadEl){roadEl.classList.add('show');roadEl.textContent=nameRoad;}
 }
 
 // ═══════════════ TỰ PHÁT HIỆN KHU DÂN CƯ (từ hành vi lái + bản đồ) ═══════════════
@@ -2080,8 +2077,8 @@ function checkSpeedLimit(kmh){
 
 // Sửa giới hạn tốc độ thủ công cho đường hiện tại (bấm vào biển trên bản đồ khi đậu xe)
 function editCurrentRoadLimit(){
-  const wrap=document.getElementById('hudLimitWrap');
-  const osmId=wrap?wrap.dataset.osmId:null;
+  const signEl=document.getElementById('hudLimitSign');
+  const osmId=signEl?signEl.dataset.osmId:null;
   if(!osmId){showToast('⚠️ Chưa xác định được đường');return;}
   const newLimit=prompt(`Giới hạn tốc độ cho "${currentRoadName}" (km/h):`,currentSpeedLimit);
   if(!newLimit)return;
