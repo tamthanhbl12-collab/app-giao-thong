@@ -299,7 +299,7 @@ textarea{resize:none;min-height:60px}
 <div class="header">
   <div class="header-icon">🚦</div>
   <div>
-    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.3</span></div>
+    <div class="header-title">MapGo <span style="font-size:10px;background:var(--amber);color:#000;padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle">v9.4</span></div>
     <div class="header-sub" id="gpsStatus">📍 Đang tìm GPS...</div>
   </div>
   <div class="hdr-right" style="gap:6px">
@@ -876,6 +876,7 @@ if(document.getElementById('panel-map').classList.contains('active')){
     learnSpeedSample(kmh);
     detectZone(kmh);
     updateCameraWarn();
+    announceLightAhead(kmh);
     checkSpeedLimit(kmh);
     updateNavInfo();
     updateNavHUD();
@@ -1156,20 +1157,9 @@ function runHUD(){
   if(driveMode&&ahead.length>0){
     const cl=ahead[0];
     const now=Date.now();
-    if(cl._dist<500&&!warnedIds.has(cl.id)&&(now-lastWarnTime)>8000){
-      warnedIds.add(cl.id);lastWarnTime=now;
-      warnBeep();
-      const phaseName={green:'xanh',yellow:'vàng',red:'đỏ'};
-      const cur=getCurrentPhase(cl);
-      const speedMs=mySpeed||10/3.6;
-      const etaSec=cl._dist/speedMs;
-      const futurePhase=cl.cycleAnchor?getPhaseAtFuture(cl,etaSec):null;
-      if(futurePhase){
-        const msg=`Đèn hỏng ${Math.round(cl._dist)} mét. Khi tới: đèn ${phaseName[futurePhase.phase]} còn ${futurePhase.remaining} giây`;
-        setTimeout(()=>speak(msg),400);
-      } else {
-        setTimeout(()=>speak(`Đèn hỏng phía trước ${Math.round(cl._dist)} mét. Chú ý quan sát.`),400);
-      }
+    // Giọng nói do announceLightAhead lo; ở đây chỉ bíp cảnh báo khi rất gần đèn hỏng
+    if(cl._dist<300&&/hỏng|tối|nhấp nháy|không chuyển/i.test(cl.type||'')&&!warnedIds.has(cl.id)&&(now-lastWarnTime)>8000){
+      warnedIds.add(cl.id);lastWarnTime=now;warnBeep();
     }
     if(cl._dist>600)warnedIds.delete(cl.id);
   }
@@ -1984,6 +1974,45 @@ function learnUrbanZone(lat,lng,name){
   urbanZones.push({lat:+lat.toFixed(5),lng:+lng.toFixed(5),name:name||''});
   if(urbanZones.length>500)urbanZones.shift();
   localStorage.setItem('urbanZones',JSON.stringify(urbanZones));
+}
+
+// ═══ GIỌNG NÓI BÁO SẮP TỚI NGÃ 3/4 CÓ ĐÈN ═══
+// Báo 1 lần khi tới gần đèn phía trước (đèn đã lưu + đèn OSM), reset khi đi qua
+let announcedLights=new Set();
+let lastLightAnnounce=0;
+function announceLightAhead(kmh){
+  if(!myLat||kmh<12)return; // đang chạy mới báo (khỏi báo lúc đậu cạnh đèn)
+  const now=Date.now();
+  const cand=[];
+  points.forEach(p=>cand.push({d:dist(myLat,myLng,p.lat,p.lng),lat:p.lat,lng:p.lng,name:p.name,cycle:p.cycle,cycleAnchor:p.cycleAnchor,camera:isCameraPoint(p),broken:/hỏng|tối|nhấp nháy|không chuyển/i.test(p.type||''),id:'p'+p.id}));
+  if(regionLights===null)osmLights.forEach((l,i)=>cand.push({d:dist(myLat,myLng,l.lat,l.lng),lat:l.lat,lng:l.lng,name:'',id:'o'+(l.id||i)}));
+  else osmLights.forEach((l,i)=>cand.push({d:dist(myLat,myLng,l.lat,l.lng),lat:l.lat,lng:l.lng,name:'',id:'o'+i}));
+  // Đi qua xa >450m → cho báo lại lần sau
+  cand.forEach(c=>{if(c.d>450&&announcedLights.has(c.id))announcedLights.delete(c.id);});
+  if(!soundOn||now-lastLightAnnounce<5000)return;
+  // Đèn gần nhất PHÍA TRƯỚC trong 300m, chưa báo
+  let best=null,bd=1e9;
+  cand.forEach(c=>{
+    if(c.d>300||announcedLights.has(c.id))return;
+    if(myHeading!==null&&angleDiff(myHeading,bearing(myLat,myLng,c.lat,c.lng))>55)return;
+    if(c.d<bd){bd=c.d;best=c;}
+  });
+  if(!best)return;
+  announcedLights.add(best.id);lastLightAnnounce=now;
+  const dm=Math.max(10,Math.round(bd/10)*10);
+  let msg;
+  if(best.broken)msg=best.name?`Chú ý, đèn hỏng ${best.name}`:`Chú ý, đèn hỏng phía trước, còn ${dm} mét`;
+  else msg=best.name?`Sắp tới ${best.name}`:`Phía trước có đèn giao thông, còn ${dm} mét`;
+  // Dự đoán pha khi tới nơi nếu đèn có chu kỳ
+  if(best.cycle&&best.cycleAnchor){
+    const eta=bd/Math.max(mySpeed,4);
+    const fp=getPhaseAtFuture(best,eta);
+    if(fp){const ph={green:'xanh',yellow:'vàng',red:'đỏ'}[fp.phase];msg+=`, khi tới đèn ${ph} còn ${fp.remaining} giây`;}
+    else msg+=`, còn ${dm} mét`;
+  } else if(best.name){msg+=`, còn ${dm} mét`;}
+  if(best.camera)msg+=', có camera phạt nguội';
+  beep(760,0.08,0.25);
+  setTimeout(()=>speak(msg),350);
 }
 
 // ═══ CẢNH BÁO CAMERA PHẠT NGUỘI theo khoảng cách (ẩn sau khi vượt qua ~20m) ═══
